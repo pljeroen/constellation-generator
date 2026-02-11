@@ -1,8 +1,12 @@
+# Private / tooling
 .env
+CLAUDE.md
+.tddv6/
+
+# Python
 venv/
 __pycache__/
 *.pyc
 *.egg-info/
 dist/
 build/
-.tddv6/
