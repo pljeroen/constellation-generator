@@ -1,0 +1,37 @@
+"""
+Port interface for satellite data export.
+
+Adapters implement this to export satellite positions in various formats
+(CSV, GeoJSON, etc.).
+"""
+from abc import ABC, abstractmethod
+from datetime import datetime
+
+
+class SatelliteExporter(ABC):
+    """Port for exporting satellite data to file."""
+
+    @abstractmethod
+    def export(
+        self,
+        satellites: list,
+        path: str,
+        epoch: datetime | None = None,
+    ) -> int:
+        """
+        Export satellite positions to a file.
+
+        Converts ECI positions to geodetic coordinates for export.
+        Uses each satellite's epoch for GMST computation; falls back
+        to the epoch parameter, then to J2000.0.
+
+        Args:
+            satellites: List of Satellite domain objects.
+            path: Output file path.
+            epoch: Fallback epoch for GMST computation when
+                satellite.epoch is None.
+
+        Returns:
+            Number of satellites exported.
+        """
+        ...

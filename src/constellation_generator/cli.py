@@ -9,17 +9,27 @@ Usage:
     constellation-generator -i sim_old.json -o sim.json --live-group GPS-OPS
     constellation-generator -i sim_old.json -o sim.json --live-name "ISS (ZARYA)"
     constellation-generator -i sim_old.json -o sim.json --live-catnr 25544
+
+    # Export to CSV or GeoJSON (alongside simulation JSON)
+    constellation-generator -i sim.json -o out.json --export-csv sats.csv
+    constellation-generator -i sim.json -o out.json --export-geojson sats.geojson
 """
 import argparse
 import sys
 
 from constellation_generator.domain.constellation import (
     ShellConfig,
+    Satellite,
     generate_walker_shell,
     generate_sso_band_configs,
 )
 from constellation_generator.domain.serialization import build_satellite_entity
-from constellation_generator.adapters import JsonSimulationReader, JsonSimulationWriter
+from constellation_generator.adapters import (
+    JsonSimulationReader,
+    JsonSimulationWriter,
+    CsvSatelliteExporter,
+    GeoJsonSatelliteExporter,
+)
 
 
 def get_default_shells() -> list[ShellConfig]:
@@ -64,12 +74,12 @@ def run(
     shells: list[ShellConfig] | None = None,
     base_id: int = 100,
     template_name: str = "Satellite",
-) -> int:
+) -> tuple[int, list[Satellite]]:
     """
     Generate synthetic constellation and write to simulation JSON.
 
     Returns:
-        Number of satellites generated.
+        (count, satellites) — number generated and list of Satellite objects.
     """
     reader = JsonSimulationReader()
     writer = JsonSimulationWriter()
@@ -84,20 +94,20 @@ def run(
     if shells is None:
         shells = get_default_shells()
 
+    all_satellites: list[Satellite] = []
     entities = sim.get('Entities', [])
     next_id = base_id
-    total_generated = 0
 
     for shell in shells:
         satellites = generate_walker_shell(shell)
+        all_satellites.extend(satellites)
         for sat in satellites:
             entity = build_satellite_entity(sat, template, base_id=next_id)
             entities.append(entity)
             next_id += 1
-            total_generated += 1
 
     writer.write_simulation(sim, output_path)
-    return total_generated
+    return len(all_satellites), all_satellites
 
 
 def run_live(
@@ -109,14 +119,14 @@ def run_live(
     base_id: int = 100,
     template_name: str = "Satellite",
     concurrent: bool = False,
-) -> int:
+) -> tuple[int, list[Satellite]]:
     """
     Fetch live satellite data from CelesTrak and write to simulation JSON.
 
     Requires: pip install constellation-generator[live]
 
     Returns:
-        Number of satellites generated.
+        (count, satellites) — number generated and list of Satellite objects.
     """
     try:
         from constellation_generator.adapters.celestrak import CelesTrakAdapter
@@ -152,7 +162,7 @@ def run_live(
         next_id += 1
 
     writer.write_simulation(sim, output_path)
-    return len(satellites)
+    return len(satellites), satellites
 
 
 def main():
@@ -188,12 +198,22 @@ def main():
         help="Use concurrent SGP4 propagation (faster for large groups)"
     )
 
+    export_group = parser.add_argument_group('export')
+    export_group.add_argument(
+        '--export-csv',
+        help="Export satellite positions to CSV (geodetic coordinates)"
+    )
+    export_group.add_argument(
+        '--export-geojson',
+        help="Export satellite positions to GeoJSON (FeatureCollection)"
+    )
+
     args = parser.parse_args()
 
     try:
         live_mode = args.live_group or args.live_name or args.live_catnr
         if live_mode:
-            count = run_live(
+            count, satellites = run_live(
                 input_path=args.input,
                 output_path=args.output,
                 group=args.live_group,
@@ -204,13 +224,22 @@ def main():
                 concurrent=args.concurrent,
             )
         else:
-            count = run(
+            count, satellites = run(
                 input_path=args.input,
                 output_path=args.output,
                 base_id=args.base_id,
                 template_name=args.template_name,
             )
         print(f"Generated {args.output} with {count} satellites.")
+
+        if args.export_csv:
+            csv_count = CsvSatelliteExporter().export(satellites, args.export_csv)
+            print(f"Exported {csv_count} satellites to {args.export_csv}")
+
+        if args.export_geojson:
+            geojson_count = GeoJsonSatelliteExporter().export(satellites, args.export_geojson)
+            print(f"Exported {geojson_count} satellites to {args.export_geojson}")
+
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

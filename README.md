@@ -49,10 +49,33 @@ constellation-generator -i sim.json -o out.json --live-catnr 25544
 `GALILEO`, `BEIDOU`, `IRIDIUM-NEXT`, `PLANET`, `SPIRE`, `GEO`,
 `INTELSAT`, `SES`, `TELESAT`, `AMATEUR`, `SCIENCE`, `NOAA`, `GOES`
 
+### Export formats
+
+Export satellite positions as geodetic coordinates (lat/lon/alt) alongside
+the simulation JSON:
+
+```bash
+# CSV export
+constellation-generator -i sim.json -o out.json --export-csv satellites.csv
+
+# GeoJSON export
+constellation-generator -i sim.json -o out.json --export-geojson satellites.geojson
+
+# Both at once
+constellation-generator -i sim.json -o out.json --export-csv sats.csv --export-geojson sats.geojson
+```
+
+CSV columns: `name`, `lat_deg`, `lon_deg`, `alt_km`, `epoch`, `plane_index`,
+`sat_index`, `raan_deg`, `true_anomaly_deg`.
+
+GeoJSON produces a FeatureCollection with Point geometries. Coordinates
+follow the GeoJSON spec: `[longitude, latitude, altitude_km]`.
+
 ### Programmatic
 
+#### Walker shell generation
+
 ```python
-# Synthetic Walker shell
 from constellation_generator import ShellConfig, generate_walker_shell
 
 shell = ShellConfig(
@@ -62,21 +85,38 @@ shell = ShellConfig(
     shell_name="Custom-Shell",
 )
 satellites = generate_walker_shell(shell)
+```
 
-# Live data from CelesTrak
+#### Live data from CelesTrak
+
+```python
 from constellation_generator.adapters.celestrak import CelesTrakAdapter
 
 celestrak = CelesTrakAdapter()
 gps_sats = celestrak.fetch_satellites(group="GPS-OPS")
 iss = celestrak.fetch_satellites(name="ISS (ZARYA)")
+```
 
-# Concurrent SGP4 propagation (faster for large groups)
+#### Concurrent mode
+
+SGP4 propagation is the bottleneck when fetching large groups (not HTTP).
+`ConcurrentCelesTrakAdapter` parallelizes propagation across threads
+using `ThreadPoolExecutor`:
+
+```python
 from constellation_generator.adapters.concurrent_celestrak import ConcurrentCelesTrakAdapter
 
 concurrent = ConcurrentCelesTrakAdapter(max_workers=16)
 starlink = concurrent.fetch_satellites(group="STARLINK")
+```
 
-# Coordinate frame conversions (ECI → ECEF → Geodetic)
+#### Coordinate frames
+
+ECI to ECEF conversion applies a Z-axis rotation by the Greenwich Mean
+Sidereal Time (GMST) angle. ECEF to Geodetic uses the iterative Bowring
+method on the WGS84 ellipsoid:
+
+```python
 from datetime import datetime, timezone
 from constellation_generator import gmst_rad, eci_to_ecef, ecef_to_geodetic
 
@@ -85,8 +125,50 @@ gmst = gmst_rad(sat.epoch)
 pos_ecef, vel_ecef = eci_to_ecef(sat.position_eci, sat.velocity_eci, gmst)
 lat, lon, alt = ecef_to_geodetic(pos_ecef)
 print(f"{sat.name}: {lat:.4f}°N, {lon:.4f}°E, {alt/1000:.1f} km")
+```
 
-# Mix both and serialise
+#### Ground track
+
+Compute the sub-satellite ground track over time using Keplerian two-body
+propagation. Appropriate for synthetic Walker shell satellites. For TLE
+data, SGP4 propagation via the adapter layer gives more accurate results.
+
+```python
+from datetime import datetime, timedelta, timezone
+from constellation_generator import compute_ground_track, generate_walker_shell, ShellConfig
+
+shell = ShellConfig(
+    altitude_km=500, inclination_deg=53,
+    num_planes=2, sats_per_plane=3,
+    phase_factor=1, raan_offset_deg=0,
+    shell_name="Demo",
+)
+sats = generate_walker_shell(shell)
+
+start = datetime(2026, 3, 20, 12, 0, 0, tzinfo=timezone.utc)
+track = compute_ground_track(sats[0], start, timedelta(minutes=90), timedelta(minutes=1))
+print(f"Ground track: {len(track)} points")
+print(f"Lat range: [{min(p.lat_deg for p in track):.1f}, {max(p.lat_deg for p in track):.1f}]")
+```
+
+#### Export formats (programmatic)
+
+```python
+from constellation_generator.adapters.csv_exporter import CsvSatelliteExporter
+from constellation_generator.adapters.geojson_exporter import GeoJsonSatelliteExporter
+
+# CSV
+CsvSatelliteExporter().export(sats, "satellites.csv")
+
+# GeoJSON
+GeoJsonSatelliteExporter().export(sats, "satellites.geojson")
+```
+
+#### Mixing sources
+
+Combine synthetic and live satellites, then serialise for simulation:
+
+```python
 from constellation_generator import build_satellite_entity
 
 template = {"Name": "Sat", "Id": 0}
@@ -114,28 +196,34 @@ src/constellation_generator/
 │   ├── orbital_mechanics.py   # Kepler → Cartesian, SSO inclination, WGS84 constants
 │   ├── constellation.py       # Walker shells, SSO bands, ShellConfig, Satellite
 │   ├── coordinate_frames.py   # ECI → ECEF → Geodetic (GMST, Bowring)
+│   ├── ground_track.py        # Keplerian ground track computation
 │   ├── serialization.py       # Simulation format (Y/Z swap, precision)
 │   └── omm.py                 # CelesTrak OMM record → OrbitalElements
 ├── ports/                     # Abstract interfaces (ABC)
 │   ├── __init__.py            # SimulationReader, SimulationWriter
-│   └── orbital_data.py        # OrbitalDataSource
-├── adapters/                  # Infrastructure (JSON I/O, HTTP, SGP4)
-│   ├── __init__.py            # JsonSimulationReader/Writer
+│   ├── orbital_data.py        # OrbitalDataSource
+│   └── export.py              # SatelliteExporter
+├── adapters/                  # Infrastructure (JSON I/O, HTTP, SGP4, export)
+│   ├── __init__.py            # JsonSimulationReader/Writer, exporters
 │   ├── celestrak.py           # CelesTrakAdapter, SGP4Adapter
-│   └── concurrent_celestrak.py # ConcurrentCelesTrakAdapter (ThreadPoolExecutor)
-└── cli.py                     # CLI entry point (--concurrent flag)
+│   ├── concurrent_celestrak.py # ConcurrentCelesTrakAdapter (ThreadPoolExecutor)
+│   ├── csv_exporter.py        # CsvSatelliteExporter
+│   └── geojson_exporter.py    # GeoJsonSatelliteExporter
+└── cli.py                     # CLI entry point (--concurrent, --export-csv, --export-geojson)
 ```
 
 The domain layer has zero external dependencies. All I/O (file access,
-HTTP, SGP4 propagation) is confined to the adapter layer behind port
-interfaces.
+HTTP, SGP4 propagation, export) is confined to the adapter layer behind
+port interfaces.
 
 ## Tests
 
 ```bash
-pytest                                    # all 68 tests
+pytest                                    # all 101 tests
 pytest tests/test_constellation.py        # 21 synthetic tests (offline)
 pytest tests/test_coordinate_frames.py    # 21 coordinate frame tests (offline)
+pytest tests/test_ground_track.py         # 16 ground track tests (offline)
+pytest tests/test_export.py               # 18 export tests (offline)
 pytest tests/test_concurrent_celestrak.py # 12 concurrent adapter tests (offline)
 pytest tests/test_live_data.py            # 13 live data tests (network)
 ```

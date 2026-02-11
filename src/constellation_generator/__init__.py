@@ -30,8 +30,12 @@ from constellation_generator.domain.coordinate_frames import (
     eci_to_ecef,
     ecef_to_geodetic,
 )
+from constellation_generator.domain.ground_track import (
+    GroundTrackPoint,
+    compute_ground_track,
+)
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 __all__ = [
     "OrbitalConstants",
@@ -49,4 +53,6 @@ __all__ = [
     "gmst_rad",
     "eci_to_ecef",
     "ecef_to_geodetic",
+    "GroundTrackPoint",
+    "compute_ground_track",
 ]

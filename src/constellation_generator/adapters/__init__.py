@@ -1,12 +1,14 @@
 """
-JSON file adapter for simulation I/O.
+Adapters for simulation I/O and satellite export.
 
-External dependencies (json, file I/O) are confined to this layer.
+External dependencies (json, csv, file I/O) are confined to this layer.
 """
 import json
 from typing import Any
 
 from constellation_generator.ports import SimulationReader, SimulationWriter
+from constellation_generator.adapters.csv_exporter import CsvSatelliteExporter
+from constellation_generator.adapters.geojson_exporter import GeoJsonSatelliteExporter
 
 
 class JsonSimulationReader(SimulationReader):
