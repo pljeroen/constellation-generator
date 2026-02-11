@@ -6,7 +6,8 @@ arbitrary Walker shells and Sun-synchronous orbit bands.
 No external dependencies — only stdlib math/dataclasses.
 """
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 
 from .orbital_mechanics import kepler_to_cartesian, sso_inclination_deg, OrbitalConstants
 
@@ -33,6 +34,7 @@ class Satellite:
     sat_index: int
     raan_deg: float
     true_anomaly_deg: float
+    epoch: datetime | None = field(default=None)
 
 
 def generate_walker_shell(config: ShellConfig) -> list[Satellite]:

@@ -69,8 +69,10 @@ class SGP4Adapter:
 
         if epoch_override:
             jd, fr = _datetime_to_jd(epoch_override)
+            propagation_epoch = epoch_override
         else:
             jd, fr = _epoch_str_to_jd(elements.epoch)
+            propagation_epoch = datetime.fromisoformat(elements.epoch)
 
         error_code, position_km, velocity_km_s = sat.sgp4(jd, fr)
         if error_code != 0:
@@ -89,6 +91,7 @@ class SGP4Adapter:
             sat_index=elements.norad_cat_id,
             raan_deg=elements.raan_deg,
             true_anomaly_deg=elements.mean_anomaly_deg,
+            epoch=propagation_epoch,
         )
 
 

@@ -33,8 +33,8 @@ constellation-generator -i sim_old.json -o sim.json --base-id 200
 # Real GPS constellation (32 satellites)
 constellation-generator -i sim.json -o out.json --live-group GPS-OPS
 
-# All Starlink satellites (~6000+)
-constellation-generator -i sim.json -o out.json --live-group STARLINK
+# All Starlink satellites (~6000+) with concurrent SGP4 propagation
+constellation-generator -i sim.json -o out.json --live-group STARLINK --concurrent
 
 # Search by name
 constellation-generator -i sim.json -o out.json --live-name "ISS (ZARYA)"
@@ -70,6 +70,22 @@ celestrak = CelesTrakAdapter()
 gps_sats = celestrak.fetch_satellites(group="GPS-OPS")
 iss = celestrak.fetch_satellites(name="ISS (ZARYA)")
 
+# Concurrent SGP4 propagation (faster for large groups)
+from constellation_generator.adapters.concurrent_celestrak import ConcurrentCelesTrakAdapter
+
+concurrent = ConcurrentCelesTrakAdapter(max_workers=16)
+starlink = concurrent.fetch_satellites(group="STARLINK")
+
+# Coordinate frame conversions (ECI → ECEF → Geodetic)
+from datetime import datetime, timezone
+from constellation_generator import gmst_rad, eci_to_ecef, ecef_to_geodetic
+
+sat = gps_sats[0]
+gmst = gmst_rad(sat.epoch)
+pos_ecef, vel_ecef = eci_to_ecef(sat.position_eci, sat.velocity_eci, gmst)
+lat, lon, alt = ecef_to_geodetic(pos_ecef)
+print(f"{sat.name}: {lat:.4f}°N, {lon:.4f}°E, {alt/1000:.1f} km")
+
 # Mix both and serialise
 from constellation_generator import build_satellite_entity
 
@@ -94,9 +110,10 @@ entities = [
 
 ```
 src/constellation_generator/
-├── domain/                    # Pure logic — only stdlib math/dataclasses
-│   ├── orbital_mechanics.py   # Kepler → Cartesian, SSO inclination
-│   ├── constellation.py       # Walker shells, SSO bands, ShellConfig
+├── domain/                    # Pure logic — only stdlib math/dataclasses/datetime
+│   ├── orbital_mechanics.py   # Kepler → Cartesian, SSO inclination, WGS84 constants
+│   ├── constellation.py       # Walker shells, SSO bands, ShellConfig, Satellite
+│   ├── coordinate_frames.py   # ECI → ECEF → Geodetic (GMST, Bowring)
 │   ├── serialization.py       # Simulation format (Y/Z swap, precision)
 │   └── omm.py                 # CelesTrak OMM record → OrbitalElements
 ├── ports/                     # Abstract interfaces (ABC)
@@ -104,8 +121,9 @@ src/constellation_generator/
 │   └── orbital_data.py        # OrbitalDataSource
 ├── adapters/                  # Infrastructure (JSON I/O, HTTP, SGP4)
 │   ├── __init__.py            # JsonSimulationReader/Writer
-│   └── celestrak.py           # CelesTrakAdapter, SGP4Adapter
-└── cli.py                     # CLI entry point
+│   ├── celestrak.py           # CelesTrakAdapter, SGP4Adapter
+│   └── concurrent_celestrak.py # ConcurrentCelesTrakAdapter (ThreadPoolExecutor)
+└── cli.py                     # CLI entry point (--concurrent flag)
 ```
 
 The domain layer has zero external dependencies. All I/O (file access,
@@ -115,9 +133,11 @@ interfaces.
 ## Tests
 
 ```bash
-pytest                       # all 35 tests
-pytest tests/test_constellation.py   # 22 synthetic tests (offline)
-pytest tests/test_live_data.py       # 13 live data tests (network)
+pytest                                    # all 68 tests
+pytest tests/test_constellation.py        # 21 synthetic tests (offline)
+pytest tests/test_coordinate_frames.py    # 21 coordinate frame tests (offline)
+pytest tests/test_concurrent_celestrak.py # 12 concurrent adapter tests (offline)
+pytest tests/test_live_data.py            # 13 live data tests (network)
 ```
 
 ## Credits

@@ -25,8 +25,13 @@ from constellation_generator.domain.omm import (
     OrbitalElements,
     parse_omm_record,
 )
+from constellation_generator.domain.coordinate_frames import (
+    gmst_rad,
+    eci_to_ecef,
+    ecef_to_geodetic,
+)
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 __all__ = [
     "OrbitalConstants",
@@ -41,4 +46,7 @@ __all__ = [
     "build_satellite_entity",
     "OrbitalElements",
     "parse_omm_record",
+    "gmst_rad",
+    "eci_to_ecef",
+    "ecef_to_geodetic",
 ]

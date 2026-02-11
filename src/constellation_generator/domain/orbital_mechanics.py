@@ -10,11 +10,16 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class OrbitalConstants:
-    """Standard orbital constants (IAU values)."""
+    """Standard orbital constants (IAU/WGS84 values)."""
     MU_EARTH: float = 3.986004418e14   # m³/s² — gravitational parameter
     R_EARTH: float = 6_371_000          # m — mean radius
     J2_EARTH: float = 1.08263e-3        # J2 perturbation coefficient
     EARTH_OMEGA: float = 1.99e-7        # rad/s — rotation rate for SSO
+    # WGS84 ellipsoid
+    R_EARTH_EQUATORIAL: float = 6_378_137.0       # m — semi-major axis
+    R_EARTH_POLAR: float = 6_356_752.3142         # m — semi-minor axis
+    FLATTENING: float = 1.0 / 298.257223563       # WGS84 flattening
+    E_SQUARED: float = 0.00669437999014           # first eccentricity squared
 
 
 # Module-level singleton

@@ -197,7 +197,7 @@ class TestDomainPurity:
     def test_domain_imports_only_allowed_stdlib(self):
         """Domain modules must not import json, os, sys, pathlib, etc."""
         import ast
-        allowed = {'math', 'dataclasses', 'typing', 'abc', 'enum', '__future__'}
+        allowed = {'math', 'dataclasses', 'typing', 'abc', 'enum', '__future__', 'datetime'}
         domain_dir = os.path.join(os.path.dirname(__file__), '..', 'src',
                                   'constellation_generator', 'domain')
         for fname in os.listdir(domain_dir):

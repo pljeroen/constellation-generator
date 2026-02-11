@@ -108,6 +108,7 @@ def run_live(
     catnr: int | None = None,
     base_id: int = 100,
     template_name: str = "Satellite",
+    concurrent: bool = False,
 ) -> int:
     """
     Fetch live satellite data from CelesTrak and write to simulation JSON.
@@ -119,6 +120,7 @@ def run_live(
     """
     try:
         from constellation_generator.adapters.celestrak import CelesTrakAdapter
+        from constellation_generator.adapters.concurrent_celestrak import ConcurrentCelesTrakAdapter
     except ImportError:
         print(
             "Live data requires the sgp4 package.\n"
@@ -136,8 +138,9 @@ def run_live(
     earth['Position'] = "0;0;0"
     earth['Velocity'] = "0;0;0"
 
-    celestrak = CelesTrakAdapter()
-    print(f"Fetching live data from CelesTrak...")
+    celestrak = ConcurrentCelesTrakAdapter() if concurrent else CelesTrakAdapter()
+    mode_label = "concurrent" if concurrent else "sequential"
+    print(f"Fetching live data from CelesTrak ({mode_label})...")
     satellites = celestrak.fetch_satellites(group=group, name=name, catnr=catnr)
     print(f"Received {len(satellites)} satellites")
 
@@ -180,6 +183,10 @@ def main():
     )
     live_group.add_argument('--live-name', help="Search by satellite name")
     live_group.add_argument('--live-catnr', type=int, help="NORAD catalog number")
+    live_group.add_argument(
+        '--concurrent', action='store_true', default=False,
+        help="Use concurrent SGP4 propagation (faster for large groups)"
+    )
 
     args = parser.parse_args()
 
@@ -194,6 +201,7 @@ def main():
                 catnr=args.live_catnr,
                 base_id=args.base_id,
                 template_name=args.template_name,
+                concurrent=args.concurrent,
             )
         else:
             count = run(
