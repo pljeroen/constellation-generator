@@ -11,6 +11,7 @@ from constellation_generator.adapters.csv_exporter import CsvSatelliteExporter
 from constellation_generator.adapters.geojson_exporter import GeoJsonSatelliteExporter
 from constellation_generator.adapters.czml_exporter import (
     constellation_packets,
+    constellation_packets_numerical,
     ground_track_packets,
     coverage_packets,
     write_czml,

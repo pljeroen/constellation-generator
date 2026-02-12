@@ -25,6 +25,7 @@ from constellation_generator.domain.solar import (
     sun_position_eci,
     AU_METERS,
 )
+from constellation_generator.domain.eclipse import is_eclipsed, EclipseType
 
 
 # --- Types ---
@@ -188,10 +189,17 @@ class SolarRadiationPressureForce:
 
     _P_SR: float = 4.56e-6  # N/m² — solar radiation pressure at 1 AU
 
-    def __init__(self, cr: float, area_m2: float, mass_kg: float) -> None:
+    def __init__(
+        self,
+        cr: float,
+        area_m2: float,
+        mass_kg: float,
+        include_shadow: bool = False,
+    ) -> None:
         self._cr = cr
         self._area_m2 = area_m2
         self._mass_kg = mass_kg
+        self._include_shadow = include_shadow
 
     def acceleration(
         self,
@@ -201,6 +209,19 @@ class SolarRadiationPressureForce:
     ) -> tuple[float, float, float]:
         sun = sun_position_eci(epoch)
         sx, sy, sz = sun.position_eci_m
+
+        if self._include_shadow:
+            eclipse = is_eclipsed(position, (sx, sy, sz))
+            if eclipse == EclipseType.UMBRA:
+                return (0.0, 0.0, 0.0)
+            if eclipse == EclipseType.PENUMBRA:
+                # Forward-compatible: current is_eclipsed never returns PENUMBRA
+                # but apply 0.5 factor if it ever does
+                shadow_factor = 0.5
+            else:
+                shadow_factor = 1.0
+        else:
+            shadow_factor = 1.0
 
         # d = r_sat - r_sun (from Sun toward satellite)
         dx = position[0] - sx
@@ -213,7 +234,7 @@ class SolarRadiationPressureForce:
 
         am_ratio = self._area_m2 / self._mass_kg
         au_ratio_sq = (AU_METERS / d_mag) ** 2
-        coeff = self._P_SR * self._cr * am_ratio * au_ratio_sq / d_mag
+        coeff = self._P_SR * self._cr * am_ratio * au_ratio_sq / d_mag * shadow_factor
 
         return (coeff * dx, coeff * dy, coeff * dz)
 

@@ -224,6 +224,91 @@ class TestWriteCzml:
             os.unlink(path)
 
 
+class TestConstellationPacketsNumerical:
+    """Tests for constellation_packets_numerical function."""
+
+    @pytest.fixture
+    def numerical_results(self, epoch, orbital_states):
+        from constellation_generator.domain.numerical_propagation import (
+            TwoBodyGravity,
+            propagate_numerical,
+        )
+        return [
+            propagate_numerical(
+                s, timedelta(hours=2), timedelta(seconds=60),
+                [TwoBodyGravity()], epoch=epoch,
+            )
+            for s in orbital_states
+        ]
+
+    @pytest.fixture
+    def numerical_packets(self, numerical_results):
+        from constellation_generator.adapters.czml_exporter import constellation_packets_numerical
+        return constellation_packets_numerical(numerical_results)
+
+    def test_document_packet_first(self, numerical_packets):
+        doc = numerical_packets[0]
+        assert doc["id"] == "document"
+        assert doc["version"] == "1.0"
+
+    def test_packet_count_matches_results(self, numerical_results, numerical_packets):
+        assert len(numerical_packets) == len(numerical_results) + 1
+
+    def test_position_uses_cartographic_degrees(self, numerical_packets):
+        for pkt in numerical_packets[1:]:
+            assert "position" in pkt
+            assert "cartographicDegrees" in pkt["position"]
+
+    def test_position_values_in_range(self, numerical_packets):
+        for pkt in numerical_packets[1:]:
+            coords = pkt["position"]["cartographicDegrees"]
+            for i in range(0, len(coords), 4):
+                lon = coords[i + 1]
+                lat = coords[i + 2]
+                alt = coords[i + 3]
+                assert -180 <= lon <= 180, f"lon out of range: {lon}"
+                assert -90 <= lat <= 90, f"lat out of range: {lat}"
+                assert alt > 0, f"alt must be positive: {alt}"
+
+    def test_interpolation_lagrange_5(self, numerical_packets):
+        for pkt in numerical_packets[1:]:
+            pos = pkt["position"]
+            assert pos["interpolationAlgorithm"] == "LAGRANGE"
+            assert pos["interpolationDegree"] == 5
+
+    def test_satellite_has_point_label_path(self, numerical_packets):
+        for pkt in numerical_packets[1:]:
+            assert "point" in pkt
+            assert "label" in pkt
+            assert "path" in pkt
+
+    def test_empty_results(self):
+        from constellation_generator.adapters.czml_exporter import constellation_packets_numerical
+        result = constellation_packets_numerical([])
+        assert len(result) == 1
+        assert result[0]["id"] == "document"
+
+    def test_clock_interval_matches_duration(self, numerical_results, numerical_packets):
+        doc = numerical_packets[0]
+        clock = doc["clock"]
+        first_step = numerical_results[0].steps[0]
+        last_step = numerical_results[0].steps[-1]
+        expected_start = first_step.time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        expected_end = last_step.time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        assert clock["interval"] == f"{expected_start}/{expected_end}"
+
+    def test_custom_sat_names(self, numerical_results):
+        from constellation_generator.adapters.czml_exporter import constellation_packets_numerical
+        custom = [f"MySat-{i}" for i in range(len(numerical_results))]
+        packets = constellation_packets_numerical(numerical_results, sat_names=custom)
+        for idx, pkt in enumerate(packets[1:]):
+            assert pkt["name"] == custom[idx]
+
+    def test_default_sat_names(self, numerical_packets):
+        for idx, pkt in enumerate(numerical_packets[1:]):
+            assert pkt["name"] == f"Sat-{idx}"
+
+
 class TestCzmlExporterPurity:
     """Adapter purity: czml_exporter may use stdlib json/math/datetime but no other external deps."""
 

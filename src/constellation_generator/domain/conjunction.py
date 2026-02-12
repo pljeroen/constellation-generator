@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from constellation_generator.domain.propagation import OrbitalState, propagate_to
+from constellation_generator.domain.numerical_propagation import NumericalPropagationResult
 
 
 @dataclass(frozen=True)
@@ -394,3 +395,55 @@ def assess_conjunction(
         b_plane_radial_m=b_radial,
         b_plane_cross_track_m=b_cross,
     )
+
+
+def screen_conjunctions_numerical(
+    results: list[NumericalPropagationResult],
+    names: list[str],
+    distance_threshold_m: float = 50_000.0,
+) -> list[tuple[int, int, datetime, float]]:
+    """Screen conjunctions from pre-computed numerical propagation results.
+
+    Assumes all results have the same time steps. Checks pairwise distances
+    at each time step.
+
+    Args:
+        results: List of NumericalPropagationResult (one per satellite).
+        names: Corresponding satellite names (same length as results).
+        distance_threshold_m: Distance threshold for flagging (meters).
+
+    Returns:
+        List of (i, j, time, distance) tuples, sorted by distance ascending.
+
+    Raises:
+        ValueError: If len(results) != len(names), or results is empty.
+    """
+    if len(results) != len(names):
+        raise ValueError(
+            f"results length ({len(results)}) != names length ({len(names)})"
+        )
+    if len(results) == 0:
+        raise ValueError("results must not be empty")
+
+    n_sats = len(results)
+    if n_sats < 2:
+        return []
+
+    candidates: list[tuple[int, int, datetime, float]] = []
+    n_steps = len(results[0].steps)
+
+    for step_idx in range(n_steps):
+        positions = [r.steps[step_idx].position_eci for r in results]
+        t = results[0].steps[step_idx].time
+
+        for i in range(n_sats):
+            for j in range(i + 1, n_sats):
+                dx = positions[i][0] - positions[j][0]
+                dy = positions[i][1] - positions[j][1]
+                dz = positions[i][2] - positions[j][2]
+                dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+                if dist <= distance_threshold_m:
+                    candidates.append((i, j, t, dist))
+
+    candidates.sort(key=lambda x: x[3])
+    return candidates

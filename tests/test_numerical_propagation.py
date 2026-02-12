@@ -435,6 +435,130 @@ class TestPropagateNumerical:
 
 # --- Domain purity ---
 
+class TestSolarRadiationPressureShadow:
+    """Shadow-aware SRP tests."""
+
+    def test_shadow_disabled_by_default(self):
+        """Default SRP has shadow disabled."""
+        srp = SolarRadiationPressureForce(cr=1.5, area_m2=10.0, mass_kg=400.0)
+        assert srp._include_shadow is False
+
+    def test_shadow_enabled_constructor(self):
+        """include_shadow=True sets _include_shadow flag."""
+        srp = SolarRadiationPressureForce(cr=1.5, area_m2=10.0, mass_kg=400.0, include_shadow=True)
+        assert srp._include_shadow is True
+
+    def test_umbra_returns_zero(self, epoch):
+        """Position in umbra → zero acceleration."""
+        from constellation_generator import sun_position_eci
+
+        srp = SolarRadiationPressureForce(cr=1.5, area_m2=10.0, mass_kg=400.0, include_shadow=True)
+        sun = sun_position_eci(epoch)
+
+        # Place satellite directly behind Earth from Sun
+        sx, sy, sz = sun.position_eci_m
+        sun_mag = math.sqrt(sx * sx + sy * sy + sz * sz)
+        # Unit vector from Earth to Sun
+        ux, uy, uz = sx / sun_mag, sy / sun_mag, sz / sun_mag
+        # Place satellite opposite from Sun, close to Earth (in shadow)
+        r = OrbitalConstants.R_EARTH + 500_000
+        pos = (-ux * r, -uy * r, -uz * r)
+        vel = (0.0, 7500.0, 0.0)
+
+        acc = srp.acceleration(epoch, pos, vel)
+        assert acc == (0.0, 0.0, 0.0)
+
+    def test_sunlit_same_as_no_shadow(self, epoch):
+        """Sunlit position → same result as shadow disabled."""
+        srp_shadow = SolarRadiationPressureForce(cr=1.5, area_m2=10.0, mass_kg=400.0, include_shadow=True)
+        srp_noshadow = SolarRadiationPressureForce(cr=1.5, area_m2=10.0, mass_kg=400.0, include_shadow=False)
+
+        # Sunlit position (arbitrary, should be on sunlit side)
+        from constellation_generator import sun_position_eci
+        sun = sun_position_eci(epoch)
+        sx, sy, sz = sun.position_eci_m
+        sun_mag = math.sqrt(sx * sx + sy * sy + sz * sz)
+        ux, uy, uz = sx / sun_mag, sy / sun_mag, sz / sun_mag
+        # Place on sunlit side
+        r = OrbitalConstants.R_EARTH + 500_000
+        pos = (ux * r, uy * r, uz * r)
+        vel = (0.0, 7500.0, 0.0)
+
+        acc_shadow = srp_shadow.acceleration(epoch, pos, vel)
+        acc_noshadow = srp_noshadow.acceleration(epoch, pos, vel)
+        assert acc_shadow == acc_noshadow
+
+    def test_backward_compatible_default(self, epoch):
+        """Existing behavior unchanged: no include_shadow arg → same as before."""
+        srp = SolarRadiationPressureForce(cr=1.5, area_m2=10.0, mass_kg=400.0)
+        r = OrbitalConstants.R_EARTH + 500_000
+        pos = (r, 0.0, 0.0)
+        vel = (0.0, 7500.0, 0.0)
+        acc = srp.acceleration(epoch, pos, vel)
+        mag = math.sqrt(sum(a ** 2 for a in acc))
+        # Non-zero acceleration even if position is in shadow (shadow not checked)
+        assert mag > 0
+
+    def test_shadow_srp_reduces_energy_less(self, epoch):
+        """Shadow SRP over 1 orbit → smaller energy change than no-shadow SRP.
+
+        During eclipsed portion of orbit, shadow-aware SRP produces zero
+        acceleration, so cumulative effect is smaller.
+        """
+        shell = ShellConfig(
+            altitude_km=500, inclination_deg=53,
+            num_planes=1, sats_per_plane=1,
+            phase_factor=0, raan_offset_deg=0, shell_name="Test",
+        )
+        sat = generate_walker_shell(shell)[0]
+        state = derive_orbital_state(sat, epoch)
+        period_s = 2 * math.pi / state.mean_motion_rad_s
+
+        forces_noshadow = [TwoBodyGravity(), SolarRadiationPressureForce(cr=1.5, area_m2=10.0, mass_kg=400.0)]
+        forces_shadow = [TwoBodyGravity(), SolarRadiationPressureForce(cr=1.5, area_m2=10.0, mass_kg=400.0, include_shadow=True)]
+
+        mu = OrbitalConstants.MU_EARTH
+
+        def energy(step):
+            r = math.sqrt(sum(p ** 2 for p in step.position_eci))
+            v = math.sqrt(sum(v ** 2 for v in step.velocity_eci))
+            return 0.5 * v ** 2 - mu / r
+
+        result_noshadow = propagate_numerical(
+            state, timedelta(seconds=period_s), timedelta(seconds=30),
+            forces_noshadow, epoch=epoch,
+        )
+        result_shadow = propagate_numerical(
+            state, timedelta(seconds=period_s), timedelta(seconds=30),
+            forces_shadow, epoch=epoch,
+        )
+
+        delta_e_noshadow = abs(energy(result_noshadow.steps[-1]) - energy(result_noshadow.steps[0]))
+        delta_e_shadow = abs(energy(result_shadow.steps[-1]) - energy(result_shadow.steps[0]))
+
+        # Shadow SRP should produce less (or equal) energy change
+        assert delta_e_shadow <= delta_e_noshadow + 1e-6
+
+    def test_eclipsed_satellite_zero_srp(self, epoch):
+        """Satellite directly behind Earth gets zero SRP with shadow enabled."""
+        from constellation_generator import sun_position_eci
+
+        srp = SolarRadiationPressureForce(cr=1.5, area_m2=10.0, mass_kg=400.0, include_shadow=True)
+        sun = sun_position_eci(epoch)
+        sx, sy, sz = sun.position_eci_m
+        sun_mag = math.sqrt(sx * sx + sy * sy + sz * sz)
+        ux, uy, uz = sx / sun_mag, sy / sun_mag, sz / sun_mag
+
+        # Place satellite in Earth's shadow (behind Earth from Sun)
+        r = OrbitalConstants.R_EARTH + 400_000
+        pos = (-ux * r, -uy * r, -uz * r)
+        vel = (0.0, 7600.0, 0.0)
+
+        acc = srp.acceleration(epoch, pos, vel)
+        mag = math.sqrt(sum(a ** 2 for a in acc))
+        assert mag == 0.0
+
+
 class TestDomainPurity:
 
     def test_domain_purity(self):

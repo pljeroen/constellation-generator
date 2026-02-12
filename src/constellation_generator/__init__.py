@@ -43,6 +43,7 @@ from constellation_generator.domain.coordinate_frames import (
 from constellation_generator.domain.ground_track import (
     GroundTrackPoint,
     compute_ground_track,
+    compute_ground_track_numerical,
 )
 from constellation_generator.domain.propagation import (
     OrbitalState,
@@ -104,6 +105,7 @@ from constellation_generator.domain.conjunction import (
     PositionCovariance,
     ConjunctionEvent,
     screen_conjunctions,
+    screen_conjunctions_numerical,
     refine_tca,
     compute_b_plane,
     foster_max_collision_probability,
@@ -159,7 +161,7 @@ from constellation_generator.domain.numerical_propagation import (
     propagate_numerical,
 )
 
-__version__ = "1.9.0"
+__version__ = "1.10.0"
 
 __all__ = [
     "OrbitalConstants",
@@ -183,6 +185,7 @@ __all__ = [
     "geodetic_to_ecef",
     "GroundTrackPoint",
     "compute_ground_track",
+    "compute_ground_track_numerical",
     "OrbitalState",
     "derive_orbital_state",
     "propagate_to",
@@ -224,6 +227,7 @@ __all__ = [
     "PositionCovariance",
     "ConjunctionEvent",
     "screen_conjunctions",
+    "screen_conjunctions_numerical",
     "refine_tca",
     "compute_b_plane",
     "foster_max_collision_probability",

@@ -20,6 +20,7 @@ from constellation_generator.domain.coordinate_frames import (
     eci_to_ecef,
     ecef_to_geodetic,
 )
+from constellation_generator.domain.numerical_propagation import PropagationStep
 
 
 @dataclass(frozen=True)
@@ -89,5 +90,38 @@ def compute_ground_track(
         ))
 
         elapsed += step_seconds
+
+    return points
+
+
+def compute_ground_track_numerical(
+    steps: tuple[PropagationStep, ...],
+) -> list[GroundTrackPoint]:
+    """Convert numerical propagation steps to ground track points.
+
+    Pipeline per step: gmst_rad -> eci_to_ecef -> ecef_to_geodetic -> GroundTrackPoint.
+
+    Args:
+        steps: Tuple of PropagationStep from numerical propagation.
+
+    Returns:
+        List of GroundTrackPoint, one per step.
+    """
+    points: list[GroundTrackPoint] = []
+
+    for step in steps:
+        gmst_angle = gmst_rad(step.time)
+        pos_ecef, _ = eci_to_ecef(
+            step.position_eci,
+            step.velocity_eci,
+            gmst_angle,
+        )
+        lat_deg, lon_deg, alt_m = ecef_to_geodetic(pos_ecef)
+        points.append(GroundTrackPoint(
+            time=step.time,
+            lat_deg=lat_deg,
+            lon_deg=lon_deg,
+            alt_km=alt_m / 1000.0,
+        ))
 
     return points

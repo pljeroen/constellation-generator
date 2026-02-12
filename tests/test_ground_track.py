@@ -169,6 +169,104 @@ class TestGroundTrackEdgeCases:
         assert track[-1].time == start + timedelta(minutes=90)
 
 
+class TestComputeGroundTrackNumerical:
+    """Tests for compute_ground_track_numerical."""
+
+    @pytest.fixture
+    def epoch(self):
+        return datetime(2026, 3, 20, 12, 0, 0, tzinfo=timezone.utc)
+
+    @pytest.fixture
+    def numerical_result(self, epoch):
+        from constellation_generator import (
+            derive_orbital_state,
+            propagate_numerical,
+        )
+        from constellation_generator.domain.numerical_propagation import (
+            TwoBodyGravity,
+        )
+        sat = _make_satellite(inclination_deg=53.0, altitude_km=500.0)
+        state = derive_orbital_state(sat, epoch)
+        return propagate_numerical(
+            state, timedelta(minutes=90), timedelta(seconds=60),
+            [TwoBodyGravity()], epoch=epoch,
+        )
+
+    def test_returns_ground_track_points(self, numerical_result):
+        from constellation_generator.domain.ground_track import compute_ground_track_numerical
+        result = compute_ground_track_numerical(numerical_result.steps)
+        assert all(isinstance(p, GroundTrackPoint) for p in result)
+
+    def test_point_count_matches_steps(self, numerical_result):
+        from constellation_generator.domain.ground_track import compute_ground_track_numerical
+        result = compute_ground_track_numerical(numerical_result.steps)
+        assert len(result) == len(numerical_result.steps)
+
+    def test_latitude_bounded_by_inclination(self, numerical_result):
+        from constellation_generator.domain.ground_track import compute_ground_track_numerical
+        result = compute_ground_track_numerical(numerical_result.steps)
+        for p in result:
+            assert abs(p.lat_deg) <= 53.5, f"Lat {p.lat_deg} exceeds inclination"
+
+    def test_altitude_near_orbital(self, numerical_result):
+        from constellation_generator.domain.ground_track import compute_ground_track_numerical
+        result = compute_ground_track_numerical(numerical_result.steps)
+        for p in result:
+            assert 470 < p.alt_km < 530, f"Alt {p.alt_km} outside expected range"
+
+    def test_longitude_in_range(self, numerical_result):
+        from constellation_generator.domain.ground_track import compute_ground_track_numerical
+        result = compute_ground_track_numerical(numerical_result.steps)
+        for p in result:
+            assert -180.0 <= p.lon_deg <= 180.0
+
+    def test_times_match_step_times(self, numerical_result):
+        from constellation_generator.domain.ground_track import compute_ground_track_numerical
+        result = compute_ground_track_numerical(numerical_result.steps)
+        for pt, step in zip(result, numerical_result.steps):
+            assert pt.time == step.time
+
+    def test_empty_steps_returns_empty(self):
+        from constellation_generator.domain.ground_track import compute_ground_track_numerical
+        result = compute_ground_track_numerical(())
+        assert result == []
+
+    def test_single_step(self, numerical_result):
+        from constellation_generator.domain.ground_track import compute_ground_track_numerical
+        result = compute_ground_track_numerical(numerical_result.steps[:1])
+        assert len(result) == 1
+        assert isinstance(result[0], GroundTrackPoint)
+
+    def test_consistent_with_analytical(self, epoch):
+        """Numerical ground track matches analytical within tolerance for two-body."""
+        from constellation_generator import derive_orbital_state, propagate_numerical
+        from constellation_generator.domain.numerical_propagation import TwoBodyGravity
+        from constellation_generator.domain.ground_track import compute_ground_track_numerical
+
+        sat = _make_satellite(inclination_deg=53.0, altitude_km=500.0)
+        state = derive_orbital_state(sat, epoch)
+
+        # Analytical ground track
+        analytical = compute_ground_track(sat, epoch, timedelta(minutes=30), timedelta(minutes=5))
+
+        # Numerical ground track
+        result = propagate_numerical(
+            state, timedelta(minutes=30), timedelta(minutes=5),
+            [TwoBodyGravity()], epoch=epoch,
+        )
+        numerical = compute_ground_track_numerical(result.steps)
+
+        assert len(analytical) == len(numerical)
+        for a_pt, n_pt in zip(analytical, numerical):
+            assert abs(a_pt.lat_deg - n_pt.lat_deg) < 1.0, \
+                f"Lat mismatch: {a_pt.lat_deg} vs {n_pt.lat_deg}"
+            # Longitude can wrap, so check minimal difference
+            lon_diff = abs(a_pt.lon_deg - n_pt.lon_deg)
+            if lon_diff > 180:
+                lon_diff = 360 - lon_diff
+            assert lon_diff < 1.0, f"Lon mismatch: {a_pt.lon_deg} vs {n_pt.lon_deg}"
+
+
 class TestGroundTrackPurity:
     """Domain purity: ground_track.py must only import from stdlib and domain."""
 

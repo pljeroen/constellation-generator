@@ -277,6 +277,78 @@ class TestAssessConjunction:
 
 # ── Domain purity ───────────────────────────────────────────────────
 
+class TestScreenConjunctionsNumerical:
+    """Tests for screen_conjunctions_numerical."""
+
+    def _make_numerical_results(self, altitude_offsets_km, nu_offsets_deg):
+        """Create numerical propagation results for testing.
+
+        Each result is for a satellite at 550 km + offset, 53 deg inclination.
+        """
+        from constellation_generator import derive_orbital_state, propagate_numerical
+        from constellation_generator.domain.numerical_propagation import TwoBodyGravity
+        from constellation_generator.domain.constellation import (
+            ShellConfig, generate_walker_shell,
+        )
+
+        results = []
+        for alt_off, nu_off in zip(altitude_offsets_km, nu_offsets_deg):
+            s = _circular_state(550 + alt_off, 53, raan_deg=0, nu_deg=nu_off)
+            result = propagate_numerical(
+                s, timedelta(minutes=10), timedelta(seconds=60),
+                [TwoBodyGravity()], epoch=EPOCH,
+            )
+            results.append(result)
+        return results
+
+    def test_close_offset_detected(self):
+        from constellation_generator.domain.conjunction import screen_conjunctions_numerical
+        results = self._make_numerical_results([0, 0], [0, 0.5])
+        events = screen_conjunctions_numerical(results, ["A", "B"], distance_threshold_m=200_000)
+        assert len(events) > 0
+
+    def test_well_separated_empty(self):
+        from constellation_generator.domain.conjunction import screen_conjunctions_numerical
+        results = self._make_numerical_results([0, 400], [0, 90])
+        events = screen_conjunctions_numerical(results, ["A", "B"], distance_threshold_m=1_000)
+        assert len(events) == 0
+
+    def test_mismatched_lengths_raises(self):
+        from constellation_generator.domain.conjunction import screen_conjunctions_numerical
+        results = self._make_numerical_results([0], [0])
+        with pytest.raises(ValueError):
+            screen_conjunctions_numerical(results, ["A", "B"])
+
+    def test_empty_results_raises(self):
+        from constellation_generator.domain.conjunction import screen_conjunctions_numerical
+        with pytest.raises(ValueError):
+            screen_conjunctions_numerical([], [])
+
+    def test_sorted_by_distance(self):
+        from constellation_generator.domain.conjunction import screen_conjunctions_numerical
+        results = self._make_numerical_results([0, 0, 0], [0, 0.3, 0.6])
+        events = screen_conjunctions_numerical(
+            results, ["A", "B", "C"], distance_threshold_m=500_000,
+        )
+        if len(events) > 1:
+            dists = [e[3] for e in events]
+            assert dists == sorted(dists)
+
+    def test_all_distances_within_threshold(self):
+        from constellation_generator.domain.conjunction import screen_conjunctions_numerical
+        threshold = 200_000.0
+        results = self._make_numerical_results([0, 0], [0, 0.5])
+        events = screen_conjunctions_numerical(results, ["A", "B"], distance_threshold_m=threshold)
+        for _, _, _, dist in events:
+            assert dist <= threshold
+
+    def test_single_satellite_no_conjunctions(self):
+        from constellation_generator.domain.conjunction import screen_conjunctions_numerical
+        results = self._make_numerical_results([0], [0])
+        events = screen_conjunctions_numerical(results, ["A"])
+        assert len(events) == 0
+
+
 class TestConjunctionPurity:
 
     def test_conjunction_module_pure(self):

@@ -18,6 +18,7 @@ from constellation_generator.domain.coordinate_frames import (
 )
 from constellation_generator.domain.ground_track import GroundTrackPoint
 from constellation_generator.domain.coverage import CoveragePoint
+from constellation_generator.domain.numerical_propagation import NumericalPropagationResult
 
 
 def _iso(dt: datetime) -> str:
@@ -197,6 +198,87 @@ def coverage_packets(
                         "color": {"rgba": [0, intensity, 0, 128]},
                     },
                 },
+            },
+        }
+        packets.append(pkt)
+
+    return packets
+
+
+def constellation_packets_numerical(
+    results: list[NumericalPropagationResult],
+    name: str = "Constellation",
+    sat_names: list[str] | None = None,
+) -> list[dict]:
+    """CZML packets from numerical propagation results.
+
+    Same structure as constellation_packets but reads PropagationStep
+    positions directly instead of re-propagating analytically.
+
+    Args:
+        results: List of NumericalPropagationResult (one per satellite).
+        name: Document name.
+        sat_names: Optional custom satellite names. Defaults to Sat-0, Sat-1, ...
+
+    Returns:
+        List of CZML packets (document + N satellites).
+    """
+    if not results:
+        return [_document_packet(name)]
+
+    epoch = results[0].steps[0].time
+    end_time = results[0].steps[-1].time
+    duration = end_time - epoch
+
+    packets: list[dict] = [_document_packet(name, epoch, duration)]
+
+    for idx, result in enumerate(results):
+        coords: list[float] = []
+        for step in result.steps:
+            t_offset = (step.time - epoch).total_seconds()
+            gmst = gmst_rad(step.time)
+            pos_ecef, _ = eci_to_ecef(
+                step.position_eci,
+                step.velocity_eci,
+                gmst,
+            )
+            lat_deg, lon_deg, alt_m = ecef_to_geodetic(pos_ecef)
+            coords.extend([t_offset, lon_deg, lat_deg, alt_m])
+
+        sat_name = sat_names[idx] if sat_names else f"Sat-{idx}"
+        sat_id = f"satellite-{idx}"
+        pkt: dict = {
+            "id": sat_id,
+            "name": sat_name,
+            "position": {
+                "epoch": _iso(epoch),
+                "cartographicDegrees": coords,
+                "interpolationAlgorithm": "LAGRANGE",
+                "interpolationDegree": 5,
+            },
+            "point": {
+                "pixelSize": 5,
+                "color": {"rgba": [255, 255, 255, 255]},
+            },
+            "label": {
+                "text": sat_name,
+                "font": "11pt sans-serif",
+                "fillColor": {"rgba": [255, 255, 255, 200]},
+                "outlineWidth": 2,
+                "style": "FILL_AND_OUTLINE",
+                "horizontalOrigin": "LEFT",
+                "pixelOffset": {"cartesian2": [12, 0]},
+            },
+            "path": {
+                "leadTime": 3600,
+                "trailTime": 3600,
+                "resolution": 120,
+                "material": {
+                    "solidColor": {
+                        "color": {"rgba": [0, 255, 255, 128]},
+                    },
+                },
+                "width": 1,
             },
         }
         packets.append(pkt)
