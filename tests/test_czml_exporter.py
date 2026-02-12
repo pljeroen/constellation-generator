@@ -2,6 +2,7 @@
 
 import ast
 import json
+import math
 import os
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -307,6 +308,66 @@ class TestConstellationPacketsNumerical:
     def test_default_sat_names(self, numerical_packets):
         for idx, pkt in enumerate(numerical_packets[1:]):
             assert pkt["name"] == f"Sat-{idx}"
+
+
+class TestPlaneColoring:
+    """Satellites in different orbital planes get distinct colors."""
+
+    def test_different_planes_have_different_point_colors(self, orbital_states, packets):
+        """Two-plane constellation: satellites in plane 0 vs plane 1 have different colors."""
+        # Get point colors from first satellite in each plane
+        colors_by_plane: dict[int, list[int]] = {}
+        for idx, state in enumerate(orbital_states):
+            pkt = packets[idx + 1]
+            color = pkt["point"]["color"]["rgba"]
+            plane = round(math.degrees(state.raan_rad))
+            colors_by_plane.setdefault(plane, color)
+
+        unique_colors = set(tuple(c) for c in colors_by_plane.values())
+        assert len(unique_colors) > 1, "All planes have same color"
+
+    def test_same_plane_shares_color(self, orbital_states, packets):
+        """Satellites within the same plane share the same point color."""
+        plane_colors: dict[int, set] = {}
+        for idx, state in enumerate(orbital_states):
+            pkt = packets[idx + 1]
+            color = tuple(pkt["point"]["color"]["rgba"])
+            plane = round(math.degrees(state.raan_rad))
+            plane_colors.setdefault(plane, set()).add(color)
+
+        for plane, colors in plane_colors.items():
+            assert len(colors) == 1, f"Plane {plane} has inconsistent colors: {colors}"
+
+    def test_path_color_matches_point_hue(self, packets):
+        """Path color uses same RGB as point but with lower alpha."""
+        for pkt in packets[1:]:
+            point_rgba = pkt["point"]["color"]["rgba"]
+            path_rgba = pkt["path"]["material"]["solidColor"]["color"]["rgba"]
+            # Same RGB channels
+            assert point_rgba[:3] == path_rgba[:3]
+            # Path alpha <= point alpha (more transparent)
+            assert path_rgba[3] <= point_rgba[3]
+
+
+class TestSatelliteDescription:
+    """Satellite packets include orbital parameter descriptions."""
+
+    def test_satellite_has_description(self, packets):
+        """Each satellite packet has a description field."""
+        for pkt in packets[1:]:
+            assert "description" in pkt, f"Missing description in {pkt['id']}"
+
+    def test_description_contains_altitude(self, packets):
+        """Description includes altitude information."""
+        for pkt in packets[1:]:
+            desc = pkt["description"]
+            assert "km" in desc.lower(), f"No altitude in description: {desc}"
+
+    def test_description_contains_inclination(self, packets):
+        """Description includes inclination."""
+        for pkt in packets[1:]:
+            desc = pkt["description"]
+            assert "incl" in desc.lower(), f"No inclination in description: {desc}"
 
 
 class TestCzmlExporterPurity:

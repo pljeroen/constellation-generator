@@ -21,6 +21,49 @@ from constellation_generator.domain.coverage import CoveragePoint
 from constellation_generator.domain.numerical_propagation import NumericalPropagationResult
 
 
+_PLANE_COLORS = [
+    (255, 82, 82, 255),     # Red
+    (66, 165, 245, 255),    # Blue
+    (102, 187, 106, 255),   # Green
+    (255, 167, 38, 255),    # Orange
+    (171, 71, 188, 255),    # Purple
+    (38, 198, 218, 255),    # Cyan
+    (255, 238, 88, 255),    # Yellow
+    (236, 64, 122, 255),    # Pink
+    (129, 199, 132, 255),   # Light green
+    (79, 195, 247, 255),    # Light blue
+    (149, 117, 205, 255),   # Light purple
+    (255, 138, 101, 255),   # Light orange
+]
+
+
+def _assign_plane_indices(states: list[OrbitalState]) -> list[int]:
+    """Group states by RAAN to assign plane indices for coloring."""
+    raan_to_plane: dict[int, int] = {}
+    result: list[int] = []
+    for state in states:
+        raan_key = round(math.degrees(state.raan_rad) * 10)
+        if raan_key not in raan_to_plane:
+            raan_to_plane[raan_key] = len(raan_to_plane)
+        result.append(raan_to_plane[raan_key])
+    return result
+
+
+def _satellite_description(state: OrbitalState) -> str:
+    """HTML description for Cesium info box."""
+    alt_km = (state.semi_major_axis_m - 6_371_000) / 1000.0
+    incl_deg = math.degrees(state.inclination_rad)
+    raan_deg = math.degrees(state.raan_rad)
+    return (
+        f"<table>"
+        f"<tr><td><b>Altitude</b></td><td>{alt_km:.1f} km</td></tr>"
+        f"<tr><td><b>Inclination</b></td><td>{incl_deg:.1f}&deg;</td></tr>"
+        f"<tr><td><b>RAAN</b></td><td>{raan_deg:.1f}&deg;</td></tr>"
+        f"<tr><td><b>Eccentricity</b></td><td>{state.eccentricity:.4f}</td></tr>"
+        f"</table>"
+    )
+
+
 def _iso(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -68,6 +111,8 @@ def constellation_packets(
     step_seconds = step.total_seconds()
     num_steps = int(total_seconds / step_seconds) + 1
 
+    plane_indices = _assign_plane_indices(orbital_states)
+
     for idx, state in enumerate(orbital_states):
         coords: list[float] = []
         for s in range(num_steps):
@@ -83,10 +128,14 @@ def constellation_packets(
             lat_deg, lon_deg, alt_m = ecef_to_geodetic(pos_ecef)
             coords.extend([t_offset, lon_deg, lat_deg, alt_m])
 
+        plane_color = _PLANE_COLORS[plane_indices[idx] % len(_PLANE_COLORS)]
+        path_color = [plane_color[0], plane_color[1], plane_color[2], 128]
+
         sat_id = f"satellite-{idx}"
         pkt: dict = {
             "id": sat_id,
             "name": f"Sat-{idx}",
+            "description": _satellite_description(state),
             "position": {
                 "epoch": _iso(epoch),
                 "cartographicDegrees": coords,
@@ -95,7 +144,7 @@ def constellation_packets(
             },
             "point": {
                 "pixelSize": 5,
-                "color": {"rgba": [255, 255, 255, 255]},
+                "color": {"rgba": list(plane_color)},
             },
             "label": {
                 "text": f"Sat-{idx}",
@@ -112,7 +161,7 @@ def constellation_packets(
                 "resolution": 120,
                 "material": {
                     "solidColor": {
-                        "color": {"rgba": [0, 255, 255, 128]},
+                        "color": {"rgba": path_color},
                     },
                 },
                 "width": 1,

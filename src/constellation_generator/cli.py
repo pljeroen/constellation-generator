@@ -10,9 +10,10 @@ Usage:
     constellation-generator -i sim_old.json -o sim.json --live-name "ISS (ZARYA)"
     constellation-generator -i sim_old.json -o sim.json --live-catnr 25544
 
-    # Export to CSV or GeoJSON (alongside simulation JSON)
+    # Export to CSV, GeoJSON, or interactive HTML viewer
     constellation-generator -i sim.json -o out.json --export-csv sats.csv
     constellation-generator -i sim.json -o out.json --export-geojson sats.geojson
+    constellation-generator -i sim.json -o out.json --export-html viewer.html
 """
 import argparse
 import sys
@@ -29,7 +30,10 @@ from constellation_generator.adapters import (
     JsonSimulationWriter,
     CsvSatelliteExporter,
     GeoJsonSatelliteExporter,
+    write_cesium_html,
 )
+from constellation_generator.adapters.czml_exporter import constellation_packets
+from constellation_generator.domain.propagation import derive_orbital_state
 
 
 def get_default_shells() -> list[ShellConfig]:
@@ -207,6 +211,14 @@ def main():
         '--export-geojson',
         help="Export satellite positions to GeoJSON (FeatureCollection)"
     )
+    export_group.add_argument(
+        '--export-html',
+        help="Export interactive 3D viewer as self-contained HTML (CesiumJS)"
+    )
+    export_group.add_argument(
+        '--cesium-token', default="",
+        help="Cesium Ion access token for imagery (optional, viewer works without)"
+    )
 
     args = parser.parse_args()
 
@@ -239,6 +251,16 @@ def main():
         if args.export_geojson:
             geojson_count = GeoJsonSatelliteExporter().export(satellites, args.export_geojson)
             print(f"Exported {geojson_count} satellites to {args.export_geojson}")
+
+        if args.export_html:
+            from datetime import datetime, timedelta, timezone
+            epoch = datetime.now(tz=timezone.utc)
+            states = [derive_orbital_state(s, epoch) for s in satellites]
+            pkts = constellation_packets(
+                states, epoch, timedelta(hours=2), timedelta(seconds=60),
+            )
+            write_cesium_html(pkts, args.export_html, cesium_token=args.cesium_token)
+            print(f"Exported interactive viewer to {args.export_html}")
 
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
