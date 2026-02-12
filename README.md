@@ -223,6 +223,83 @@ max_vis = max(p.visible_count for p in grid)
 print(f"Grid: {len(grid)} points, max visible: {max_vis}")
 ```
 
+#### Atmospheric drag and orbit lifetime
+
+Model atmospheric density, compute orbit lifetime under drag decay,
+and predict altitude at future times:
+
+```python
+from constellation_generator import (
+    DragConfig, atmospheric_density, compute_orbit_lifetime,
+    compute_altitude_at_time, OrbitalConstants,
+)
+from datetime import datetime, timedelta, timezone
+
+drag = DragConfig(cd=2.2, area_m2=10.0, mass_kg=260.0)
+print(f"B_c = {drag.ballistic_coefficient:.4f} m²/kg")
+print(f"Density at 550 km: {atmospheric_density(550.0):.3e} kg/m³")
+
+epoch = datetime(2026, 3, 20, 12, 0, 0, tzinfo=timezone.utc)
+a = OrbitalConstants.R_EARTH + 550_000
+result = compute_orbit_lifetime(a, 0.0, drag, epoch)
+print(f"Lifetime at 550 km: {result.lifetime_days:.0f} days ({result.lifetime_days/365.25:.1f} yr)")
+print(f"Converged: {result.converged}, profile points: {len(result.decay_profile)}")
+
+alt_1yr = compute_altitude_at_time(a, 0.0, drag, epoch, epoch + timedelta(days=365))
+print(f"Altitude after 1 year: {alt_1yr:.1f} km")
+```
+
+#### Station-keeping delta-V budgets
+
+Compute annual delta-V for drag compensation and plane maintenance,
+total propellant budget, and operational lifetime:
+
+```python
+from constellation_generator import (
+    StationKeepingConfig, compute_station_keeping_budget, DragConfig,
+)
+
+drag = DragConfig(cd=2.2, area_m2=10.0, mass_kg=260.0)
+config = StationKeepingConfig(
+    target_altitude_km=550, inclination_deg=53,
+    drag_config=drag, isp_s=300,
+    dry_mass_kg=250, propellant_mass_kg=10,
+)
+budget = compute_station_keeping_budget(config)
+print(f"Drag ΔV: {budget.drag_dv_per_year_ms:.2f} m/s/yr")
+print(f"Plane ΔV: {budget.plane_dv_per_year_ms:.2f} m/s/yr")
+print(f"Total ΔV capacity: {budget.total_dv_capacity_ms:.1f} m/s")
+print(f"Operational lifetime: {budget.operational_lifetime_years:.1f} yr")
+```
+
+#### Conjunction screening and collision probability
+
+Screen a constellation for close approaches, refine TCA, compute
+B-plane geometry and collision probability:
+
+```python
+from constellation_generator import (
+    screen_conjunctions, assess_conjunction, PositionCovariance,
+    generate_walker_shell, ShellConfig, derive_orbital_state,
+)
+from datetime import datetime, timedelta, timezone
+
+epoch = datetime(2026, 3, 20, 12, 0, 0, tzinfo=timezone.utc)
+shell = ShellConfig(altitude_km=550, inclination_deg=53, num_planes=6,
+                    sats_per_plane=10, phase_factor=1, raan_offset_deg=0, shell_name="Test")
+sats = generate_walker_shell(shell)
+states = [derive_orbital_state(s, reference_epoch=epoch) for s in sats]
+names = [s.name for s in sats]
+
+events = screen_conjunctions(states, names, epoch, timedelta(hours=2),
+                             timedelta(seconds=30), distance_threshold_m=100_000)
+print(f"Conjunction candidates in 2h: {len(events)}")
+if events:
+    i, j, t, d = events[0]
+    event = assess_conjunction(states[i], names[i], states[j], names[j], t)
+    print(f"Closest: {event.miss_distance_m:.0f} m between {event.sat1_name} and {event.sat2_name}")
+```
+
 #### Export formats (programmatic)
 
 ```python
@@ -273,6 +350,10 @@ src/constellation_generator/
 │   ├── observation.py         # Topocentric azimuth/elevation/range
 │   ├── access_windows.py      # Satellite rise/set window detection
 │   ├── coverage.py            # Grid-based visibility coverage analysis
+│   ├── atmosphere.py          # Exponential density model, drag acceleration
+│   ├── lifetime.py            # Orbit lifetime, decay profile (Euler integration)
+│   ├── station_keeping.py     # Delta-V budgets, Tsiolkovsky, propellant lifetime
+│   ├── conjunction.py         # Screening, TCA, B-plane, collision probability
 │   ├── serialization.py       # Simulation format (Y/Z swap, precision)
 │   └── omm.py                 # CelesTrak OMM record → OrbitalElements
 ├── ports/                     # Abstract interfaces (ABC)
@@ -295,15 +376,19 @@ port interfaces.
 ## Tests
 
 ```bash
-pytest                                    # all 171 tests
+pytest                                    # all 239 tests
 pytest tests/test_constellation.py        # 21 synthetic tests (offline)
 pytest tests/test_coordinate_frames.py    # 29 coordinate frame tests (offline)
 pytest tests/test_j2_perturbations.py     # 11 J2 perturbation tests (offline)
-pytest tests/test_propagation.py          # 16 propagation tests (offline)
+pytest tests/test_propagation.py          # 18 propagation tests (offline)
 pytest tests/test_ground_track.py         # 16 ground track tests (offline)
 pytest tests/test_observation.py          # 14 observation tests (offline)
 pytest tests/test_access_windows.py       # 11 access window tests (offline)
 pytest tests/test_coverage.py             # 10 coverage tests (offline)
+pytest tests/test_atmosphere.py           # 16 atmospheric drag tests (offline)
+pytest tests/test_lifetime.py             # 16 orbit lifetime tests (offline)
+pytest tests/test_station_keeping.py      # 17 station-keeping tests (offline)
+pytest tests/test_conjunction.py          # 18 conjunction tests (offline)
 pytest tests/test_export.py               # 18 export tests (offline)
 pytest tests/test_concurrent_celestrak.py # 12 concurrent adapter tests (offline)
 pytest tests/test_live_data.py            # 13 live data tests (network)
@@ -315,4 +400,13 @@ Original code by [Scott Manley](https://www.youtube.com/@scottmanley). Refactore
 
 ## License
 
-MIT
+This project uses a dual-license model:
+
+**MIT** — the core library (constellation generation, propagation, coordinate
+frames, ground track, observation, access windows, coverage, export).
+See `LICENSE`.
+
+**Commercial** — the pro modules (atmospheric drag, orbit lifetime,
+station-keeping, conjunction assessment). Free for personal, educational,
+and academic use. Commercial use requires a one-time EUR 10,000 license.
+See `LICENSE-COMMERCIAL.md` or email planet dot jeroen at gmail dot com.

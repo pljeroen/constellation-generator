@@ -1,0 +1,396 @@
+# Copyright (c) 2026 Jeroen. All rights reserved.
+# Licensed under the terms in LICENSE-COMMERCIAL.md.
+# Free for personal, educational, and academic use.
+# Commercial use requires a paid license — see LICENSE-COMMERCIAL.md.
+"""
+Conjunction screening, TCA refinement, B-plane decomposition,
+and collision probability assessment.
+
+No external dependencies — only stdlib math/dataclasses/datetime.
+"""
+import math
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+
+from constellation_generator.domain.propagation import OrbitalState, propagate_to
+
+
+@dataclass(frozen=True)
+class PositionCovariance:
+    """3x3 symmetric position covariance matrix (upper triangle, meters^2)."""
+    sigma_xx: float
+    sigma_yy: float
+    sigma_zz: float
+    sigma_xy: float
+    sigma_xz: float
+    sigma_yz: float
+
+
+@dataclass(frozen=True)
+class ConjunctionEvent:
+    """Result of a conjunction assessment."""
+    sat1_name: str
+    sat2_name: str
+    tca: datetime
+    miss_distance_m: float
+    relative_velocity_ms: float
+    collision_probability: float
+    max_collision_probability: float
+    b_plane_radial_m: float
+    b_plane_cross_track_m: float
+
+
+def _distance_at_time(
+    state1: OrbitalState,
+    state2: OrbitalState,
+    t: datetime,
+) -> tuple[float, list[float], list[float], list[float], list[float]]:
+    """Compute distance between two states at time t.
+
+    Returns (distance, pos1, vel1, pos2, vel2).
+    """
+    p1, v1 = propagate_to(state1, t)
+    p2, v2 = propagate_to(state2, t)
+    dx = p1[0] - p2[0]
+    dy = p1[1] - p2[1]
+    dz = p1[2] - p2[2]
+    dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+    return dist, p1, v1, p2, v2
+
+
+def screen_conjunctions(
+    states: list[OrbitalState],
+    names: list[str],
+    start: datetime,
+    duration: timedelta,
+    step: timedelta,
+    distance_threshold_m: float = 50_000.0,
+) -> list[tuple[int, int, datetime, float]]:
+    """Screen for conjunction candidates via pairwise distance checks.
+
+    Propagates all states at each timestep, checks pairwise distances.
+
+    Args:
+        states: List of OrbitalState objects.
+        names: Corresponding satellite names (same length as states).
+        start: Start time for screening window.
+        duration: Duration of screening window.
+        step: Time step between checks.
+        distance_threshold_m: Distance threshold for flagging (meters).
+
+    Returns:
+        List of (i, j, time, distance) tuples, sorted by distance.
+
+    Raises:
+        ValueError: If len(states) != len(names) or step <= 0.
+    """
+    if len(states) != len(names):
+        raise ValueError(
+            f"states length ({len(states)}) != names length ({len(names)})"
+        )
+    step_seconds = step.total_seconds()
+    if step_seconds <= 0:
+        raise ValueError(f"step must be positive, got {step_seconds}s")
+
+    duration_seconds = duration.total_seconds()
+    n_sats = len(states)
+    results: list[tuple[int, int, datetime, float]] = []
+
+    t_elapsed = 0.0
+    while t_elapsed <= duration_seconds:
+        t = start + timedelta(seconds=t_elapsed)
+
+        # Propagate all states to current time
+        positions = []
+        for s in states:
+            pos, _ = propagate_to(s, t)
+            positions.append(pos)
+
+        # Pairwise distance check
+        for i in range(n_sats):
+            for j in range(i + 1, n_sats):
+                dx = positions[i][0] - positions[j][0]
+                dy = positions[i][1] - positions[j][1]
+                dz = positions[i][2] - positions[j][2]
+                dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+                if dist <= distance_threshold_m:
+                    results.append((i, j, t, dist))
+
+        t_elapsed += step_seconds
+
+    results.sort(key=lambda x: x[3])
+    return results
+
+
+def refine_tca(
+    state1: OrbitalState,
+    state2: OrbitalState,
+    t_guess: datetime,
+    search_window_s: float = 300.0,
+    tolerance_seconds: float = 0.1,
+) -> tuple[datetime, float, float]:
+    """Refine time of closest approach using golden-section search.
+
+    Minimizes ||pos1(t) - pos2(t)|| within search window around guess.
+
+    Args:
+        state1: First satellite state.
+        state2: Second satellite state.
+        t_guess: Initial guess for TCA.
+        search_window_s: Half-width of search window (seconds).
+        tolerance_seconds: Convergence tolerance (seconds).
+
+    Returns:
+        (tca, miss_distance_m, relative_velocity_ms)
+    """
+    golden_ratio = (math.sqrt(5) - 1) / 2
+
+    a_s = -search_window_s
+    b_s = search_window_s
+
+    c_s = b_s - golden_ratio * (b_s - a_s)
+    d_s = a_s + golden_ratio * (b_s - a_s)
+
+    while abs(b_s - a_s) > tolerance_seconds:
+        t_c = t_guess + timedelta(seconds=c_s)
+        t_d = t_guess + timedelta(seconds=d_s)
+
+        fc, _, _, _, _ = _distance_at_time(state1, state2, t_c)
+        fd, _, _, _, _ = _distance_at_time(state1, state2, t_d)
+
+        if fc < fd:
+            b_s = d_s
+        else:
+            a_s = c_s
+
+        c_s = b_s - golden_ratio * (b_s - a_s)
+        d_s = a_s + golden_ratio * (b_s - a_s)
+
+    best_s = (a_s + b_s) / 2.0
+    tca = t_guess + timedelta(seconds=best_s)
+    dist, p1, v1, p2, v2 = _distance_at_time(state1, state2, tca)
+
+    dvx = v1[0] - v2[0]
+    dvy = v1[1] - v2[1]
+    dvz = v1[2] - v2[2]
+    rel_vel = math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz)
+
+    return tca, dist, rel_vel
+
+
+def compute_b_plane(
+    pos1: list[float],
+    vel1: list[float],
+    pos2: list[float],
+    vel2: list[float],
+) -> tuple[float, float]:
+    """Compute B-plane decomposition of miss vector.
+
+    Projects miss vector onto plane perpendicular to relative velocity.
+
+    Args:
+        pos1, vel1: Position/velocity of satellite 1 (m, m/s).
+        pos2, vel2: Position/velocity of satellite 2 (m, m/s).
+
+    Returns:
+        (b_radial_m, b_cross_track_m) — B-plane components.
+    """
+    # Relative velocity direction (encounter frame)
+    dvx = vel1[0] - vel2[0]
+    dvy = vel1[1] - vel2[1]
+    dvz = vel1[2] - vel2[2]
+    dv_mag = math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz)
+
+    if dv_mag < 1e-10:
+        return 0.0, 0.0
+
+    # Unit vector along relative velocity
+    s_hat = [dvx / dv_mag, dvy / dv_mag, dvz / dv_mag]
+
+    # Miss vector (from sat2 to sat1)
+    mx = pos1[0] - pos2[0]
+    my = pos1[1] - pos2[1]
+    mz = pos1[2] - pos2[2]
+
+    # Project miss vector onto B-plane (perpendicular to s_hat)
+    m_dot_s = mx * s_hat[0] + my * s_hat[1] + mz * s_hat[2]
+    bx = mx - m_dot_s * s_hat[0]
+    by = my - m_dot_s * s_hat[1]
+    bz = mz - m_dot_s * s_hat[2]
+
+    # Define radial direction: component of position in B-plane
+    # Use orbit normal approximation: z-component dominant for radial
+    r1_mag = math.sqrt(pos1[0] ** 2 + pos1[1] ** 2 + pos1[2] ** 2)
+    if r1_mag < 1e-10:
+        return math.sqrt(bx * bx + by * by + bz * bz), 0.0
+
+    r_hat = [pos1[0] / r1_mag, pos1[1] / r1_mag, pos1[2] / r1_mag]
+
+    # Radial component in B-plane
+    r_proj_s = r_hat[0] * s_hat[0] + r_hat[1] * s_hat[1] + r_hat[2] * s_hat[2]
+    r_b = [r_hat[i] - r_proj_s * s_hat[i] for i in range(3)]
+    r_b_mag = math.sqrt(r_b[0] ** 2 + r_b[1] ** 2 + r_b[2] ** 2)
+
+    if r_b_mag < 1e-10:
+        return math.sqrt(bx * bx + by * by + bz * bz), 0.0
+
+    r_b_hat = [r_b[i] / r_b_mag for i in range(3)]
+
+    # Cross-track direction: s_hat x r_b_hat
+    ct_hat = [
+        s_hat[1] * r_b_hat[2] - s_hat[2] * r_b_hat[1],
+        s_hat[2] * r_b_hat[0] - s_hat[0] * r_b_hat[2],
+        s_hat[0] * r_b_hat[1] - s_hat[1] * r_b_hat[0],
+    ]
+
+    b_radial = bx * r_b_hat[0] + by * r_b_hat[1] + bz * r_b_hat[2]
+    b_cross = bx * ct_hat[0] + by * ct_hat[1] + bz * ct_hat[2]
+
+    return b_radial, b_cross
+
+
+def foster_max_collision_probability(
+    miss_distance_m: float,
+    combined_radius_m: float,
+    combined_covariance_trace_m2: float,
+) -> float:
+    """Foster conservative upper bound on collision probability.
+
+    Pc_max = r^2 / (2 * e * sigma^2)
+
+    where r = combined_radius, sigma^2 = combined_covariance_trace.
+    Ref: NASA conjunction assessment.
+
+    Args:
+        miss_distance_m: Miss distance (meters) — unused in max bound formula
+            but kept for API consistency.
+        combined_radius_m: Combined hard-body radius (meters).
+        combined_covariance_trace_m2: Trace of combined position covariance (m^2).
+
+    Returns:
+        Maximum collision probability (dimensionless). 0 if covariance <= 0.
+    """
+    if combined_covariance_trace_m2 <= 0:
+        return 0.0
+    return combined_radius_m ** 2 / (2.0 * math.e * combined_covariance_trace_m2)
+
+
+def collision_probability_2d(
+    miss_distance_m: float,
+    b_radial_m: float,
+    b_cross_m: float,
+    sigma_radial_m: float,
+    sigma_cross_m: float,
+    combined_radius_m: float,
+    num_steps: int = 100,
+) -> float:
+    """2D collision probability via numerical integration in B-plane.
+
+    Integrates bivariate normal distribution over hard-body disk.
+
+    Args:
+        miss_distance_m: Total miss distance (meters).
+        b_radial_m: B-plane radial component (meters).
+        b_cross_m: B-plane cross-track component (meters).
+        sigma_radial_m: Radial position uncertainty (meters).
+        sigma_cross_m: Cross-track position uncertainty (meters).
+        combined_radius_m: Combined hard-body radius (meters).
+        num_steps: Grid resolution per axis for integration.
+
+    Returns:
+        Collision probability (dimensionless, 0-1).
+    """
+    if sigma_radial_m <= 0 or sigma_cross_m <= 0:
+        return 0.0
+
+    r = combined_radius_m
+    dx = 2.0 * r / num_steps
+    dy = 2.0 * r / num_steps
+
+    probability = 0.0
+    for i in range(num_steps):
+        x = -r + (i + 0.5) * dx
+        for j in range(num_steps):
+            y = -r + (j + 0.5) * dy
+
+            # Check if point is within hard-body disk
+            if x * x + y * y > r * r:
+                continue
+
+            # Bivariate normal centered at miss vector in B-plane
+            zx = (x - b_radial_m) / sigma_radial_m
+            zy = (y - b_cross_m) / sigma_cross_m
+            pdf = (1.0 / (2.0 * math.pi * sigma_radial_m * sigma_cross_m)) * math.exp(
+                -0.5 * (zx * zx + zy * zy)
+            )
+            probability += pdf * dx * dy
+
+    return min(probability, 1.0)
+
+
+def assess_conjunction(
+    state1: OrbitalState,
+    name1: str,
+    state2: OrbitalState,
+    name2: str,
+    t_guess: datetime,
+    combined_radius_m: float = 10.0,
+    cov1: PositionCovariance | None = None,
+    cov2: PositionCovariance | None = None,
+) -> ConjunctionEvent:
+    """Full conjunction assessment: TCA refinement, B-plane, collision probability.
+
+    Args:
+        state1: First satellite state.
+        name1: First satellite name.
+        state2: Second satellite state.
+        name2: Second satellite name.
+        t_guess: Approximate conjunction time.
+        combined_radius_m: Combined hard-body radius (meters).
+        cov1: Position covariance for satellite 1 (optional).
+        cov2: Position covariance for satellite 2 (optional).
+
+    Returns:
+        ConjunctionEvent with full assessment results.
+    """
+    tca, miss_dist, rel_vel = refine_tca(state1, state2, t_guess)
+
+    # Propagate to TCA for B-plane
+    p1, v1 = propagate_to(state1, tca)
+    p2, v2 = propagate_to(state2, tca)
+
+    b_radial, b_cross = compute_b_plane(p1, v1, p2, v2)
+
+    pc = 0.0
+    pc_max = 0.0
+
+    if cov1 is not None and cov2 is not None:
+        # Combined covariance trace (sum of diagonal elements)
+        combined_trace = (
+            cov1.sigma_xx + cov1.sigma_yy + cov1.sigma_zz
+            + cov2.sigma_xx + cov2.sigma_yy + cov2.sigma_zz
+        )
+
+        pc_max = foster_max_collision_probability(
+            miss_dist, combined_radius_m, combined_trace,
+        )
+
+        # Approximate radial/cross-track sigmas from combined covariance
+        sigma_combined = math.sqrt(combined_trace / 3.0)
+        pc = collision_probability_2d(
+            miss_dist, b_radial, b_cross,
+            sigma_combined, sigma_combined,
+            combined_radius_m,
+        )
+
+    return ConjunctionEvent(
+        sat1_name=name1,
+        sat2_name=name2,
+        tca=tca,
+        miss_distance_m=miss_dist,
+        relative_velocity_ms=rel_vel,
+        collision_probability=pc,
+        max_collision_probability=pc_max,
+        b_plane_radial_m=b_radial,
+        b_plane_cross_track_m=b_cross,
+    )
