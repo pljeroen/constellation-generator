@@ -20,7 +20,7 @@ flows through port interfaces implemented by adapters.
 │  │  ┌─────────────────────────────────────┐  │  │
 │  │  │           Domain (stdlib only)      │  │  │
 │  │  │                                     │  │  │
-│  │  │  60 modules · math/datetime only    │  │  │
+│  │  │  71 modules · math/datetime only    │  │  │
 │  │  │  Zero external dependencies         │  │  │
 │  │  └─────────────────────────────────────┘  │  │
 │  └───────────────────────────────────────────┘  │
@@ -33,7 +33,7 @@ Pure business logic. Only Python stdlib (`math`, `datetime`, `dataclasses`,
 `enum`, `typing`). Enforced by purity tests that parse AST and reject any
 non-stdlib imports.
 
-### Module categories (60 modules)
+### Module categories (71 modules)
 
 **MIT core (10 modules)**:
 
@@ -50,7 +50,7 @@ non-stdlib imports.
 | `omm` | CelesTrak OMM record parsing |
 | `serialization` | Simulation format (Y/Z swap, precision) |
 
-**Commercial modules (49 modules)** — free for personal/educational/academic use:
+**Commercial modules (61 modules)** — free for personal/educational/academic use:
 
 | Category | Modules |
 |----------|---------|
@@ -63,6 +63,7 @@ non-stdlib imports.
 | Math | `linalg`, `control_analysis`, `statistical_analysis`, `relative_motion` |
 | Research | `decay_analysis`, `temporal_correlation`, `operational_prediction`, `sp3_parser` |
 | Maneuvers | `maneuvers` |
+| Early Warning | `orbit_determination` (EKF), `maneuver_detection` (CUSUM/EWMA/chi-squared), `hazard_reporting` (NASA-STD-8719.14), `kessler_heatmap` (spatial density + cascade) |
 
 ## Ports layer
 

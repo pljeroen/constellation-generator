@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Jeroen Visser. All rights reserved.
-# Licensed under the terms in LICENSE-COMMERCIAL.md.
+# Licensed under the terms in COMMERCIAL-LICENSE.md.
 # Free for personal, educational, and academic use.
-# Commercial use requires a paid license — see LICENSE-COMMERCIAL.md.
+# Commercial use requires a paid license — see COMMERCIAL-LICENSE.md.
 """Interactive viewer server for Cesium-based constellation visualization.
 
 Local HTTP server (stdlib only) serving a Cesium viewer with on-demand
@@ -49,6 +49,8 @@ from constellation_generator.adapters.czml_visualization import (
     network_eclipse_packets,
     precession_constellation_packets,
     conjunction_replay_packets,
+    kessler_heatmap_packets,
+    conjunction_hazard_packets,
 )
 from constellation_generator.domain.link_budget import LinkConfig
 from constellation_generator.domain.sensor import SensorConfig, SensorType
@@ -251,6 +253,15 @@ def _generate_czml(
         prec_step = timedelta(minutes=15)
         return constellation_packets(
             subset, epoch, prec_duration, prec_step, name=name,
+        )
+
+    if layer_type == "kessler_heatmap":
+        return kessler_heatmap_packets(states, epoch, duration, step, name=name)
+
+    if layer_type == "conjunction_hazard":
+        capped = states[:_MAX_TOPOLOGY_SATS]
+        return conjunction_hazard_packets(
+            capped, epoch, duration, step, name=name,
         )
 
     if layer_type == "conjunction":
@@ -576,6 +587,7 @@ class ConstellationHandler(BaseHTTPRequestHandler):
             "eclipse", "coverage", "sensor", "isl", "fragility",
             "hazard", "network_eclipse", "coverage_connectivity",
             "ground_track", "conjunction", "precession",
+            "kessler_heatmap", "conjunction_hazard",
         }
         if analysis_type not in valid_types:
             self._error_response(400, f"Unknown analysis type: {analysis_type}")

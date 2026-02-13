@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Jeroen Visser. All rights reserved.
-# Licensed under the terms in LICENSE-COMMERCIAL.md.
+# Licensed under the terms in COMMERCIAL-LICENSE.md.
 # Free for personal, educational, and academic use.
-# Commercial use requires a paid license — see LICENSE-COMMERCIAL.md.
+# Commercial use requires a paid license — see COMMERCIAL-LICENSE.md.
 """Advanced CZML visualization packets for CesiumJS.
 
 Eclipse-aware coloring, sensor footprints, ground station access,
@@ -34,6 +34,15 @@ from constellation_generator.domain.link_budget import LinkConfig, compute_link_
 from constellation_generator.domain.inter_satellite_links import compute_isl_topology
 from constellation_generator.domain.graph_analysis import compute_topology_resilience
 from constellation_generator.domain.revisit import compute_single_coverage_fraction
+from constellation_generator.domain.kessler_heatmap import compute_kessler_heatmap
+from constellation_generator.domain.conjunction import (
+    screen_conjunctions,
+    assess_conjunction,
+)
+from constellation_generator.domain.hazard_reporting import (
+    classify_hazard,
+    HazardLevel,
+)
 from constellation_generator.adapters.czml_exporter import (
     _PLANE_COLORS,
     _assign_plane_indices,
@@ -1198,6 +1207,206 @@ def network_eclipse_packets(
                     "solidColor": {"color": {"rgba": color}},
                 },
                 "width": 2,
+                "arcType": "NONE",
+            },
+        })
+
+    return packets
+
+
+# ── Risk / hazard color maps ─────────────────────────────────────────
+
+_KESSLER_RISK_COLORS: dict[str, list[int]] = {
+    "low": [102, 187, 106, 255],
+    "moderate": [255, 235, 59, 255],
+    "high": [255, 152, 0, 255],
+    "critical": [244, 67, 54, 255],
+}
+
+_HAZARD_LEVEL_COLORS: dict[HazardLevel, list[int]] = {
+    HazardLevel.ROUTINE: [102, 187, 106, 180],
+    HazardLevel.WARNING: [255, 235, 59, 220],
+    HazardLevel.CRITICAL: [244, 67, 54, 255],
+}
+
+
+def kessler_heatmap_packets(
+    states: list[OrbitalState],
+    epoch: datetime,
+    duration: timedelta,
+    step: timedelta,
+    name: str = "Kessler Heatmap",
+) -> list[dict]:
+    """Satellites colored by Kessler cascade risk level.
+
+    Computes spatial density heatmap from orbital states and colors
+    each satellite by the risk level of its altitude/inclination cell:
+    green (low), yellow (moderate), orange (high), red (critical).
+
+    Args:
+        states: Satellite orbital states.
+        epoch: Start time.
+        duration: Total duration.
+        step: Time step.
+        name: Document name.
+
+    Returns:
+        List of CZML packets.
+    """
+    packets: list[dict] = [_document_packet(name, epoch, duration)]
+
+    if not states:
+        return packets
+
+    heatmap = compute_kessler_heatmap(states)
+
+    # Map each satellite to its cell's risk level
+    sat_risks: list[str] = []
+    for state in states:
+        alt_km = (state.semi_major_axis_m - OrbitalConstants.R_EARTH) / 1000.0
+        inc_deg = abs(math.degrees(state.inclination_rad))
+        risk = "low"
+        for cell in heatmap.cells:
+            if (cell.altitude_min_km <= alt_km < cell.altitude_max_km
+                    and cell.inclination_min_deg <= inc_deg < cell.inclination_max_deg):
+                risk = cell.risk_level
+                break
+        sat_risks.append(risk)
+
+    total_seconds = duration.total_seconds()
+    step_seconds = _validate_step(step)
+    num_steps = int(total_seconds / step_seconds) + 1
+    interp_degree = _interpolation_degree(num_steps)
+
+    for idx, state in enumerate(states):
+        coords: list[float] = []
+        for s in range(num_steps):
+            t_offset = s * step_seconds
+            target_time = epoch + timedelta(seconds=t_offset)
+            _, _, lat_deg, lon_deg, alt_m = _propagate_geodetic(state, target_time)
+            coords.extend([t_offset, lon_deg, lat_deg, alt_m])
+
+        color = _KESSLER_RISK_COLORS.get(sat_risks[idx], _KESSLER_RISK_COLORS["low"])
+
+        packets.append({
+            "id": f"kessler-sat-{idx}",
+            "name": f"Sat-{idx} ({sat_risks[idx]})",
+            "position": {
+                "epoch": _iso(epoch),
+                "cartographicDegrees": coords,
+                "interpolationAlgorithm": "LAGRANGE",
+                "interpolationDegree": interp_degree,
+            },
+            "point": {
+                "pixelSize": 6,
+                "color": {"rgba": color},
+            },
+            "label": {
+                "text": sat_risks[idx][0].upper(),
+                "font": "9pt sans-serif",
+                "fillColor": {"rgba": color},
+                "outlineWidth": 1,
+                "style": "FILL_AND_OUTLINE",
+                "horizontalOrigin": "LEFT",
+                "pixelOffset": {"cartesian2": [8, 0]},
+            },
+        })
+
+    return packets
+
+
+def conjunction_hazard_packets(
+    states: list[OrbitalState],
+    epoch: datetime,
+    duration: timedelta,
+    step: timedelta,
+    screening_threshold_m: float = 100_000.0,
+    name: str = "Conjunction Hazard",
+) -> list[dict]:
+    """Constellation with conjunction events colored by hazard level.
+
+    Screens for conjunctions and shows polylines between close pairs,
+    colored by NASA-STD-8719.14 hazard level:
+    green (ROUTINE), yellow (WARNING), red (CRITICAL).
+
+    Args:
+        states: Satellite orbital states.
+        epoch: Start time.
+        duration: Total duration.
+        step: Time step.
+        screening_threshold_m: Distance threshold for screening (meters).
+        name: Document name.
+
+    Returns:
+        List of CZML packets.
+    """
+    packets: list[dict] = [_document_packet(name, epoch, duration)]
+
+    if len(states) < 2:
+        return packets
+
+    total_seconds = duration.total_seconds()
+    step_seconds = _validate_step(step)
+    num_steps = int(total_seconds / step_seconds) + 1
+    interp_degree = _interpolation_degree(num_steps)
+
+    # Satellite position packets
+    for idx, state in enumerate(states):
+        coords: list[float] = []
+        for s in range(num_steps):
+            t_offset = s * step_seconds
+            target_time = epoch + timedelta(seconds=t_offset)
+            _, _, lat_deg, lon_deg, alt_m = _propagate_geodetic(state, target_time)
+            coords.extend([t_offset, lon_deg, lat_deg, alt_m])
+
+        packets.append({
+            "id": f"hazconj-sat-{idx}",
+            "name": f"Sat-{idx}",
+            "position": {
+                "epoch": _iso(epoch),
+                "cartographicDegrees": coords,
+                "interpolationAlgorithm": "LAGRANGE",
+                "interpolationDegree": interp_degree,
+            },
+            "point": {
+                "pixelSize": 4,
+                "color": {"rgba": [200, 200, 200, 200]},
+            },
+        })
+
+    # Screen for conjunctions
+    sat_names = [f"Sat-{i}" for i in range(len(states))]
+    screening_step = timedelta(seconds=60)
+    candidates = screen_conjunctions(
+        states, sat_names, epoch, duration, screening_step, screening_threshold_m,
+    )
+
+    # Assess and classify top candidates
+    for c_idx, (i, j, tca, dist_m) in enumerate(candidates[:20]):
+        event = assess_conjunction(states[i], sat_names[i], states[j], sat_names[j], tca)
+        hazard = classify_hazard(event)
+        color = _HAZARD_LEVEL_COLORS.get(hazard, _HAZARD_LEVEL_COLORS[HazardLevel.ROUTINE])
+
+        # Show polyline during a window around TCA
+        window_half = timedelta(minutes=10)
+        avail_start = max(epoch, tca - window_half)
+        avail_end = min(epoch + duration, tca + window_half)
+
+        packets.append({
+            "id": f"hazconj-line-{c_idx}",
+            "name": f"{hazard.value}: Sat-{i} - Sat-{j} ({dist_m:.0f}m)",
+            "availability": f"{_iso(avail_start)}/{_iso(avail_end)}",
+            "polyline": {
+                "positions": {
+                    "references": [
+                        f"hazconj-sat-{i}#position",
+                        f"hazconj-sat-{j}#position",
+                    ],
+                },
+                "material": {
+                    "solidColor": {"color": {"rgba": color}},
+                },
+                "width": 3,
                 "arcType": "NONE",
             },
         })

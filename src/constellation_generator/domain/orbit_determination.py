@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Jeroen Visser. All rights reserved.
-# Licensed under the terms in LICENSE-COMMERCIAL.md.
+# Licensed under the terms in COMMERCIAL-LICENSE.md.
 # Free for personal, educational, and academic use.
-# Commercial use requires a paid license — see LICENSE-COMMERCIAL.md.
+# Commercial use requires a paid license — see COMMERCIAL-LICENSE.md.
 """Extended Kalman Filter (EKF) orbit determination.
 
 Processes position observations to estimate spacecraft state (position
@@ -35,6 +35,7 @@ class ODEstimate:
     state: tuple[float, float, float, float, float, float]  # x,y,z,vx,vy,vz
     covariance: tuple[tuple[float, ...], ...]  # 6x6
     residual_m: float  # post-fit residual
+    innovation_variance_m2: float | None = None  # EKF predicted innovation S
 
 
 @dataclass(frozen=True)

@@ -25,14 +25,14 @@ Use freely for any purpose. See [LICENSE](../LICENSE).
 
 ### Commercial (extended modules)
 
-50 domain modules and 4 adapters. Copyright "Jeroen Visser".
+61 domain modules and 4 adapters. Copyright "Jeroen Visser".
 
 **Free for**: personal use, educational use, academic research.
 
 **Requires paid license for**: commercial use by companies. Starting at
 EUR 2,000.
 
-See [LICENSE-COMMERCIAL.md](../LICENSE-COMMERCIAL.md) for full terms.
+See [COMMERCIAL-LICENSE.md](../COMMERCIAL-LICENSE.md) for full terms.
 
 ## What's commercial
 
@@ -46,6 +46,7 @@ See [LICENSE-COMMERCIAL.md](../LICENSE-COMMERCIAL.md) for full terms.
 | Domain — composition | 9 | mission analysis, conjunction management, communication, coverage optimization, environment, maintenance, economics, operability, cascade |
 | Domain — math | 4 | linalg, control analysis, statistical analysis, relative motion |
 | Domain — research | 4 | decay analysis, temporal correlation, operational prediction, SP3 parser |
+| Domain — early warning | 4 | orbit determination (EKF), maneuver detection, hazard reporting, Kessler heatmap |
 | Domain — other | 6 | solar, maneuvers, constellation operability, design optimization, multi-objective design, mission economics |
 | Adapters | 4 | czml_exporter, czml_visualization, cesium_viewer, viewer_server |
 
@@ -60,9 +61,9 @@ Check the copyright line at the top of any file:
 
 # Commercial:
 # Copyright (c) 2026 Jeroen Visser. All rights reserved.
-# Licensed under the terms in LICENSE-COMMERCIAL.md.
+# Licensed under the terms in COMMERCIAL-LICENSE.md.
 ```
 
 ## Contact
 
-For commercial licensing: see LICENSE-COMMERCIAL.md for contact details.
+For commercial licensing: see COMMERCIAL-LICENSE.md for contact details.

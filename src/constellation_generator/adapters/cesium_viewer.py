@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Jeroen Visser. All rights reserved.
-# Licensed under the terms in LICENSE-COMMERCIAL.md.
+# Licensed under the terms in COMMERCIAL-LICENSE.md.
 # Free for personal, educational, and academic use.
-# Commercial use requires a paid license — see LICENSE-COMMERCIAL.md.
+# Commercial use requires a paid license — see COMMERCIAL-LICENSE.md.
 """Self-contained Cesium HTML viewer for CZML data.
 
 Generates a single HTML file that loads CesiumJS from CDN and embeds
@@ -496,6 +496,8 @@ def generate_interactive_html(
                     <button class="btn btn-sm" onclick="addAnalysis('network_eclipse')">Net Eclipse</button>
                     <button class="btn btn-sm" onclick="addAnalysis('coverage_connectivity')">Cov+Connect</button>
                     <button class="btn btn-sm" onclick="addAnalysis('precession')">Precession</button>
+                    <button class="btn btn-sm" onclick="addAnalysis('kessler_heatmap')">Kessler</button>
+                    <button class="btn btn-sm" onclick="addAnalysis('conjunction_hazard')">Conj Hazard</button>
                 </div>
             </div>
         </details>

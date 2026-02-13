@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Jeroen Visser. All rights reserved.
-# Licensed under the terms in LICENSE-COMMERCIAL.md.
+# Licensed under the terms in COMMERCIAL-LICENSE.md.
 # Free for personal, educational, and academic use.
-# Commercial use requires a paid license — see LICENSE-COMMERCIAL.md.
+# Commercial use requires a paid license — see COMMERCIAL-LICENSE.md.
 """Validation: SP3 precise ephemeris parsing and cross-validation.
 
 SP3 (Standard Product #3) files from IGS contain centimeter-accurate

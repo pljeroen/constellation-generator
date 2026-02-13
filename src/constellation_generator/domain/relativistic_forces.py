@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Jeroen Visser. All rights reserved.
-# Licensed under the Commercial License — see LICENSE-COMMERCIAL.md.
+# Licensed under the Commercial License — see COMMERCIAL-LICENSE.md.
 """Relativistic force models for high-fidelity orbit propagation.
 
 Post-Newtonian corrections per IERS 2010 Conventions (Chapter 10):

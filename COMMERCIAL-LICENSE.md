@@ -12,6 +12,7 @@ The following files are **not** covered by the MIT License:
 - `communication_analysis.py` — Network capacity analysis
 - `conjunction.py` — Screening, TCA, B-plane, collision probability
 - `conjunction_management.py` — Conjunction management workflows
+- `kessler_heatmap.py` — Kessler spatial density heatmap, percolation, cascade k_eff
 - `constellation_metrics.py` — Coverage/revisit/eclipse statistics, scoring
 - `constellation_operability.py` — Operability index
 - `control_analysis.py` — CW controllability Gramian
@@ -26,18 +27,21 @@ The following files are **not** covered by the MIT License:
 - `environment_analysis.py` — Combined environment assessment
 - `graph_analysis.py` — Graph-theoretic ISL (Fiedler, fragmentation)
 - `gravity_field.py` — Cunningham V/W spherical harmonic gravity (EGM96 70x70)
+- `hazard_reporting.py` — NASA-STD-8719.14 hazard classification, breakup potential, CWI
 - `information_theory.py` — BEC channel, coverage spectrum, marginal value
 - `inter_satellite_links.py` — ISL topology, link geometry
 - `lifetime.py` — Orbit lifetime, decay profile
 - `linalg.py` — Linear algebra (Jacobi eigensolver, DFT)
 - `link_budget.py` — RF link budget, SNR, data rate
 - `maintenance_planning.py` — Maintenance and scheduling
+- `maneuver_detection.py` — EKF innovation-based maneuver detection (CUSUM, EWMA, chi-squared)
 - `maneuvers.py` — Hohmann, bi-elliptic, plane change, phasing
 - `mission_analysis.py` — Cross-domain mission composition
 - `mission_economics.py` — Mission economics modeling
 - `multi_objective_design.py` — Multi-objective Pareto design
 - `nrlmsise00.py` — NRLMSISE-00 atmosphere model with solar activity
 - `numerical_propagation.py` — RK4 integrator + pluggable force models
+- `orbit_determination.py` — Extended Kalman Filter orbit determination
 - `precession_nutation.py` — IAU 2006 precession + IAU 2000B nutation + GCRS↔ITRS
 - `operational_prediction.py` — EOL prediction, maneuver feasibility
 - `orbit_design.py` — SSO/LTAN, frozen orbit, repeat ground track
@@ -74,6 +78,8 @@ The following files are **not** covered by the MIT License:
 - `test_adaptive_integration.py`, `test_atmosphere.py`, `test_cascade_analysis.py`, `test_cesium_viewer.py`,
   `test_communication_analysis.py`, `test_conjunction.py`,
   `test_conjunction_management.py`, `test_constellation_metrics.py`,
+  `test_hazard_reporting.py`, `test_kessler_heatmap.py`,
+  `test_maneuver_detection.py`, `test_orbit_determination.py`,
   `test_constellation_operability.py`, `test_control_analysis.py`,
   `test_coverage_optimization.py`, `test_czml_exporter.py`,
   `test_czml_visualization.py`, `test_decay_analysis.py`, `test_deorbit.py`,

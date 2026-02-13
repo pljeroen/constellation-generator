@@ -48,7 +48,7 @@ Plus live ISS data from CelesTrak (animated track).
 
 ## Analysis layer types
 
-The viewer dispatches 13 analysis types via `_generate_czml()`. Each uses
+The viewer dispatches 15 analysis types via `_generate_czml()`. Each uses
 sensible defaults that can be overridden via the `params` dict in the API.
 
 ### Core layers
@@ -78,6 +78,8 @@ sensible defaults that can be overridden via the `params` dict in the API.
 | `hazard` | Satellites fade green→red over projected orbital lifetime | Cd=2.2, A=0.01 m², m=4 kg. Duration = ½ lifetime capped 1 yr |
 | `precession` | J2 RAAN drift over extended timeline | 7-day duration, 15-min step, 24-sat subset |
 | `conjunction` | Two-satellite close approach replay with proximity line | states[0] vs states[n/2], ±30 min, 10s step |
+| `kessler_heatmap` | Altitude × inclination debris density heatmap | 200-2000 km, 0-180°, 50 km × 10° bins |
+| `conjunction_hazard` | Conjunction screening with NASA-STD-8719.14 hazard levels | 2h window, 100 km threshold, ROUTINE/WARNING/CRITICAL coloring |
 
 ## Default configurations
 

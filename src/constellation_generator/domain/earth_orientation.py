@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Jeroen Visser. All rights reserved.
-# Licensed under the Commercial License — see LICENSE-COMMERCIAL.md.
+# Licensed under the Commercial License — see COMMERCIAL-LICENSE.md.
 """Earth Orientation Parameters (EOP): UT1-UTC, polar motion, and transformations.
 
 Provides loading and interpolation of IERS finals2000A data for

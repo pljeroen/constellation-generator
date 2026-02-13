@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Jeroen Visser. All rights reserved.
-# Licensed under the Commercial License — see LICENSE-COMMERCIAL.md.
+# Licensed under the Commercial License — see COMMERCIAL-LICENSE.md.
 """Tests for Earth albedo and infrared radiation pressure force model."""
 
 import ast

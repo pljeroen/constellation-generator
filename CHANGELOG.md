@@ -4,10 +4,87 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
-- Documentation suite (`docs/` folder)
-- GitHub license detection fix (standard MIT LICENSE)
-- Simulation JSON schema documentation
-- CelesTrak reproducibility documentation
+## [1.22.0] - 2026-02-13
+
+### Early warning and hazard analysis
+
+- **Hazard reporting** — NASA-STD-8719.14 hazard classification (ROUTINE/WARNING/CRITICAL),
+  covariance-unavailable path with tighter miss-distance thresholds, secondary maneuver
+  escalation, circuit-breaker hysteresis for de-escalation, catastrophic breakup potential
+  (E > 40 kJ/kg), Conjunction Weather Index (FWI-inspired composite), HMAC-SHA256
+  provenance signing
+- **Maneuver detection** — Two-sided CUSUM (Page 1954, Montgomery 2013 parameters h=5.0
+  k=0.5), EWMA detector for low-thrust maneuvers (Roberts 1959), chi-squared windowed
+  variance test with correct DOF, self-starting rolling baseline (Hawkins 1987), EKF
+  innovation variance support, ARL₀ estimation (Siegmund 1985), d' sensitivity index
+- **Kessler heatmap** — Altitude × inclination spatial density grid, corrected collision
+  velocity (Kessler 1978: V_circ·√2·sin(i_mid)), spherical zone volume fraction,
+  Shannon population entropy, percolation fraction with 2D threshold (Stauffer & Aharony),
+  nuclear criticality k_eff cascade indicator, Lyapunov exponent estimate, temporal
+  persistence tracking for chronic hotspots
+- **Orbit determination** — Extended Kalman Filter with Joseph-stabilized covariance
+  update, innovation variance field for downstream CUSUM
+
+### Cross-disciplinary patterns implemented (from 90-discipline analysis)
+
+- Statistical Process Control (CUSUM/EWMA parameters from manufacturing quality control)
+- Percolation theory (2D lattice threshold from condensed matter physics)
+- Nuclear criticality (k_eff multiplication factor from reactor physics)
+- Signal detection theory (d' sensitivity from psychophysics)
+- Circuit breaker pattern (hysteresis from electrical engineering)
+- Forensic accounting (HMAC chain-of-custody from audit science)
+- Fire Weather Index structure (composite risk index from forestry)
+- STPA hazard analysis (covariance gap from systems safety)
+
+### Viewer integration
+
+- `kessler_heatmap` analysis layer type (altitude × inclination grid visualization)
+- `conjunction_hazard` analysis layer type (hazard-classified conjunction screening)
+- 15 total analysis layer types (was 13)
+
+### Infrastructure
+
+- NumPy vectorization across all domain modules
+- Domain purity allowlist extended for `hmac` (stdlib)
+
+**Tests**: 2060 passing
+
+## [1.21.0] - 2026-02-13
+
+- NumPy big-bang upgrade across all 71 domain modules
+- Vectorized linear algebra, orbital mechanics, and analysis computations
+
+**Tests**: 1883 passing
+
+## [1.20.0] - 2026-02-13
+
+### NASA-grade fidelity upgrade (7 phases)
+
+- **Time systems** — AstroTime value object with UTC/TAI/TT/TDB/GPS conversions,
+  leap second table, Fairhead & Bretagnon 1990 TDB approximation
+- **Precession-nutation** — IAU 2006 Fukushima-Williams precession, IAU 2000B 77-term
+  nutation, GCRS↔ITRS frame chain, Earth Rotation Angle
+- **Earth orientation** — EOP loader/interpolator (IERS finals2000A 2000-2030),
+  UT1-UTC, polar motion, full GCRS→ITRS with W·R3(ERA)·N·P·B
+- **Planetary ephemeris** — Compact Chebyshev Sun/Moon (2000-2050, ~120KB),
+  Clenshaw recurrence, ~100m accuracy vs DE440
+- **NRLMSISE-00** — Full atmosphere model with solar activity (F10.7, Ap),
+  species densities, diurnal/seasonal variations
+- **Adaptive integration** — Dormand-Prince RK4(5) with FSAL, PI step controller,
+  dense output via Hermite interpolation
+- **Force models** — Schwarzschild + Lense-Thirring + de Sitter relativistic,
+  solid Earth tides (IERS 2010 Love numbers), FES2004 ocean tides,
+  Earth albedo + IR radiation pressure
+
+### Simulator integrations
+
+- Celestia .ssc exporter
+- Google Earth KML exporter
+- Blender Python script exporter
+- Stellarium TLE exporter
+- Kerbal Space Program exporter (Kerbin scaling)
+
+**Tests**: 1882 passing
 
 ## [1.19.0] - 2026-02-12
 

@@ -535,8 +535,33 @@ from constellation_generator.domain.design_sensitivity import (
     compute_coverage_connectivity_crossover,
     compute_altitude_sensitivity,
 )
+from constellation_generator.domain.hazard_reporting import (
+    HazardLevel,
+    HazardReport,
+    HazardHysteresis,
+    classify_hazard,
+    apply_hysteresis,
+    compute_breakup_potential,
+    compute_conjunction_weather_index,
+    sign_report,
+)
+from constellation_generator.domain.maneuver_detection import (
+    ManeuverEvent,
+    ManeuverDetectionResult,
+    detect_maneuvers_cusum,
+    detect_maneuvers_chi_squared,
+    detect_maneuvers_ewma,
+)
+from constellation_generator.domain.kessler_heatmap import (
+    KesslerCell,
+    KesslerHeatMap,
+    KesslerPersistence,
+    classify_kessler_risk,
+    compute_kessler_heatmap,
+    update_persistence,
+)
 
-__version__ = "1.21.0"
+__version__ = "1.22.0"
 
 __all__ = [
     "OrbitalConstants",
@@ -968,4 +993,19 @@ __all__ = [
     "OceanTideForce",
     # albedo_srp
     "AlbedoRadiationPressure",
+    # hazard_reporting
+    "HazardLevel",
+    "HazardReport",
+    "classify_hazard",
+    "sign_report",
+    # maneuver_detection
+    "ManeuverEvent",
+    "ManeuverDetectionResult",
+    "detect_maneuvers_cusum",
+    "detect_maneuvers_chi_squared",
+    # kessler_heatmap
+    "KesslerCell",
+    "KesslerHeatMap",
+    "classify_kessler_risk",
+    "compute_kessler_heatmap",
 ]

@@ -1,8 +1,8 @@
 # Constellation Generator
 
-[![Version](https://img.shields.io/badge/version-1.19.0-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-1.22.0-blue.svg)](pyproject.toml)
 [![Python](https://img.shields.io/badge/python-3.11_%7C_3.12_%7C_3.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-1384_passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-2060_passing-brightgreen.svg)](tests/)
 [![License](https://img.shields.io/badge/license-MIT_(core)-green.svg)](LICENSE)
 
 Generate Walker constellation satellite shells and fetch live orbital data for orbit simulation tools.
@@ -15,7 +15,7 @@ Generate Walker constellation satellite shells and fetch live orbital data for o
 > compliance determination. All models are simplified approximations —
 > results must be independently validated before use in any operational context.
 > See the warranty disclaimer in [LICENSE](LICENSE) and
-> [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md).
+> [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
 
 ## Install
 
@@ -601,7 +601,7 @@ python view_constellation.py --open
 
 **Server mode** pre-loads three Walker shells (500/450/400 km, 1584 sats each)
 and live ISS data from CelesTrak. The browser UI supports adding/removing
-constellations, ground stations, and 13 analysis layer types via the API.
+constellations, ground stations, and 15 analysis layer types via the API.
 
 **Static mode** generates a self-contained HTML file (~10 MB) with baked-in
 CZML data. No server required — just open the file in a browser.
@@ -623,6 +623,8 @@ The viewer dispatches 13 analysis types, each with sensible defaults:
 | `coverage_connectivity` | Ground rectangles colored by coverage × Fiedler value | Ka-band, 10° grid, 100-sat cap |
 | `precession` | J2 RAAN drift over extended timeline | 7-day duration, 15-min step, 24-sat cap |
 | `conjunction` | Two-satellite close approach replay with proximity line | states[0] vs states[n/2], ±30 min window, 10s step |
+| `kessler_heatmap` | Altitude × inclination debris density grid | 200-2000 km, 0-180°, 50 km × 10° bins |
+| `conjunction_hazard` | Conjunction screening with NASA-STD-8719.14 hazard levels | 2h window, 100 km threshold, color by ROUTINE/WARNING/CRITICAL |
 | `ground_station` | Station marker + visibility circle + access tracks | 10° min elevation |
 | `ground_track` | Sub-satellite ground trace polyline | First satellite, 2h |
 
@@ -690,7 +692,7 @@ entities = [
 
 ```
 src/constellation_generator/
-├── domain/                        # Pure logic — only stdlib (60 modules)
+├── domain/                        # Pure logic — only stdlib (71 modules)
 │   ├── orbital_mechanics.py       # Kepler → Cartesian, SSO inclination, J2/J3
 │   ├── constellation.py           # Walker shells, SSO bands, ShellConfig, Satellite
 │   ├── coordinate_frames.py       # ECI ↔ ECEF ↔ Geodetic (GMST, Bowring, WGS84)
@@ -745,7 +747,11 @@ src/constellation_generator/
 │   ├── temporal_correlation.py    # ◆ Cross-spectral coherence
 │   ├── operational_prediction.py  # ◆ EOL prediction, maneuver feasibility
 │   ├── design_sensitivity.py      # ◆ Spectral fragility, altitude sensitivity
-│   └── sp3_parser.py              # ◆ IGS SP3 precise ephemeris parser
+│   ├── sp3_parser.py              # ◆ IGS SP3 precise ephemeris parser
+│   ├── orbit_determination.py     # ◆ Extended Kalman Filter orbit determination
+│   ├── maneuver_detection.py      # ◆ CUSUM/EWMA/chi-squared maneuver detection
+│   ├── hazard_reporting.py        # ◆ NASA-STD-8719.14 hazard classification + CWI
+│   └── kessler_heatmap.py         # ◆ Kessler spatial density + cascade criticality
 ├── ports/                         # Protocol interfaces (structural typing)
 │   ├── __init__.py                # SimulationReader, SimulationWriter
 │   ├── orbital_data.py            # OrbitalDataSource
@@ -772,11 +778,11 @@ port interfaces.
 ## Tests
 
 ```bash
-pytest                           # all 1384 tests (offline, no network required)
+pytest                           # all 2060 tests (offline, no network required)
 pytest tests/test_live_data.py   # live CelesTrak tests (requires network)
 ```
 
-The test suite covers all 60 domain modules, 6 invariant test suites, adapter
+The test suite covers all 71 domain modules, 6 invariant test suites, adapter
 tests, and domain purity tests (verifying zero external dependencies).
 All tests except `test_live_data.py` run offline.
 
@@ -859,12 +865,14 @@ and IGS SP3 precise ephemerides. Six invariant test suites verify energy
 conservation, angular momentum, vis-viva identity, and coordinate frame
 round-trips.
 
-**Cross-domain composition.** The 49 commercial domain modules are
+**Cross-domain composition.** The 61 commercial domain modules are
 designed to compose: conjunction management chains screening into
 collision probability into avoidance maneuver planning. Mission analysis
 combines coverage, eclipse, link budget, and lifetime into a single
-assessment. These compositions encode domain knowledge that would take
-months to build from scratch.
+assessment. Early-warning modules chain EKF orbit determination into
+maneuver detection into hazard reporting with cryptographic provenance.
+These compositions encode domain knowledge that would take months to
+build from scratch.
 
 **Pure Python, zero compiled extensions.** No C dependencies, no build
 toolchain, no platform-specific binaries. Runs anywhere Python runs.
@@ -884,9 +892,10 @@ This project uses a dual-license model:
 propagation, coordinate frames, coverage analysis, observation geometry,
 ground track, access windows, export adapters). See [`LICENSE`](LICENSE).
 
-**Commercial** — extended modules (49 domain modules, 4 adapters, 58 test
+**Commercial** — extended modules (61 domain modules, 4 adapters, 72 test
 files) covering numerical propagation, atmospheric drag, eclipse, maneuvers,
 ISL topology, link budgets, conjunction, radiation, statistical analysis,
-design optimization, interactive viewer, and more. Free for personal,
-educational, and academic use. Commercial use requires a paid license
-starting at EUR 2,000. See [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md).
+design optimization, orbit determination, maneuver detection, hazard
+reporting, Kessler density analysis, interactive viewer, and more. Free for
+personal, educational, and academic use. Commercial use requires a paid
+license starting at EUR 2,000. See [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md).
