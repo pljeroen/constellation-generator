@@ -5,8 +5,9 @@ Export constellations to 3D space simulators for interactive visualization.
 ## Universe Sandbox
 
 [Universe Sandbox](https://universesandbox.com/) is a physics-based space
-simulator. The `.ubox` format is a ZIP archive containing XML that defines
-celestial bodies with Keplerian orbital elements.
+simulator. The `.ubox` format is a ZIP archive containing `simulation.json`
+with Earth and satellite body entities using ECI state vectors, plus metadata
+files (`version.ini`, `info.json`, `ui-state.json`).
 
 ### Basic export
 
@@ -25,8 +26,17 @@ epoch = datetime(2026, 3, 20, 12, 0, 0, tzinfo=timezone.utc)
 UboxExporter().export(sats, "constellation.ubox", epoch=epoch)
 ```
 
-Open `constellation.ubox` in Universe Sandbox. Each satellite appears as a
-body orbiting Earth with correct Keplerian elements.
+### Opening in Universe Sandbox
+
+1. Open Universe Sandbox
+2. Go to **Open** and browse to your `constellation.ubox` file
+3. Earth will load with all satellites orbiting it
+4. Use the time controls to watch the constellation evolve
+5. Click any satellite to inspect its properties (mass, velocity, orbit)
+
+Satellites are rendered as particles by default. To make them more visible,
+increase the **Particle Scale** in View settings, or export with a larger
+`area_m2` in `DragConfig` to give them a bigger radius.
 
 ### With physical properties
 
@@ -40,8 +50,8 @@ UboxExporter(drag_config=drag).export(sats, "constellation.ubox", epoch=epoch)
 ```
 
 This sets:
-- **Mass**: from `mass_kg` (converted to Universe Sandbox units: 10^20 kg)
-- **Diameter**: derived from `area_m2` assuming a circular cross-section
+- **Mass**: from `mass_kg` (kg, used directly)
+- **Radius**: derived from `area_m2` assuming a circular cross-section (metres)
 
 ### With live data
 
@@ -57,15 +67,14 @@ UboxExporter().export(gps, "gps.ubox")
 
 | Property | Source | Notes |
 |----------|--------|-------|
-| Semi-major axis | ECI position magnitude | km |
-| Eccentricity | 0 for Walker shells | Non-zero for TLE-derived sats possible |
-| Inclination | Angular momentum vector | Degrees |
-| RAAN | `satellite.raan_deg` | Degrees |
-| Arg of perigee | 0 for circular orbits | Degrees |
-| Mean anomaly | `satellite.true_anomaly_deg` | = true anomaly for circular |
-| Epoch date | `epoch` parameter | `YYYY-MM-DD` |
-| Mass | `DragConfig.mass_kg` | Optional |
-| Diameter | `DragConfig.area_m2` | Optional, derived |
+| Position | `satellite.position_eci` | Metres, ECI frame, semicolon-separated |
+| Velocity | `satellite.velocity_eci` | m/s, ECI frame, semicolon-separated |
+| Parent | Earth (Id=3) | Satellite orbits relative to Earth |
+| RelativeTo | 1 | Positions relative to parent body |
+| Mass | `DragConfig.mass_kg` | Optional, default 500 kg |
+| Radius | `DragConfig.area_m2` | Optional, derived from cross-section |
+| Epoch date | `epoch` parameter | Simulation start time |
+| Earth | Full rendering entity | Textures, atmosphere, clouds, oceans |
 
 ## SpaceEngine
 
@@ -93,8 +102,25 @@ SpaceEngineExporter().export(sats, "constellation.sc", epoch=epoch)
 ### Installation in SpaceEngine
 
 1. Export to `.sc` file
-2. Copy to `SpaceEngine/addons/catalogs/planets/`
-3. Launch SpaceEngine and navigate to Earth — satellites will be visible
+2. Copy to `SpaceEngine/addons/catalogs/planets/`:
+   - **Linux (Steam)**: `~/.local/share/Steam/steamapps/common/SpaceEngine/addons/catalogs/planets/`
+   - **Windows (Steam)**: `C:\Program Files (x86)\Steam\steamapps\common\SpaceEngine\addons\catalogs\planets\`
+   - **Windows (standalone)**: `C:\SpaceEngine\addons\catalogs\planets\`
+3. Launch SpaceEngine (or restart if already running)
+4. Press `F3` to open the search dialog and type a satellite name
+   (e.g. `LEO-550-Plane1-Sat1`) to fly directly to it
+5. Alternatively, use the planetary system browser (`F2` -> Solar System ->
+   Earth) and scroll through the moons list — satellites appear as Moon objects
+
+Satellites are tiny (sub-metre radius by default) and won't be visible from
+far away. To make them easier to spot, export with a larger cross-section:
+
+```python
+drag = DragConfig(cd=2.2, area_m2=1000.0, mass_kg=260.0)
+SpaceEngineExporter(drag_config=drag).export(sats, "constellation.sc", epoch=epoch)
+```
+
+This gives each satellite an ~18m radius instead of ~1.8m.
 
 ### With physical properties
 

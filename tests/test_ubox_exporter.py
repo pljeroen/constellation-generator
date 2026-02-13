@@ -1,17 +1,19 @@
 # Copyright (c) 2026 Jeroen Visser. All rights reserved.
 # Licensed under the MIT License — see LICENSE.
 """Tests for Universe Sandbox .ubox exporter."""
+import json
 import math
-import os
-import tempfile
-import xml.etree.ElementTree as ET
 import zipfile
 from datetime import datetime, timezone
 
 import pytest
 
-from constellation_generator.domain.constellation import Satellite, ShellConfig, generate_walker_shell
 from constellation_generator.domain.atmosphere import DragConfig
+from constellation_generator.domain.constellation import (
+    Satellite,
+    ShellConfig,
+    generate_walker_shell,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -30,12 +32,18 @@ def _make_satellites() -> list[Satellite]:
     return generate_walker_shell(SHELL)
 
 
+def _parse_simulation(path: str) -> dict:
+    """Extract and parse simulation.json from a .ubox file."""
+    with zipfile.ZipFile(path) as zf:
+        return json.loads(zf.read("simulation.json"))
+
+
 # ---------------------------------------------------------------------------
-# Basic export — ZIP structure and XML validity
+# ZIP structure and metadata files
 # ---------------------------------------------------------------------------
 
 class TestUboxFileStructure:
-    """The .ubox file must be a ZIP containing valid XML."""
+    """The .ubox file must be a ZIP containing simulation.json + metadata."""
 
     def test_creates_valid_zip(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
@@ -47,7 +55,7 @@ class TestUboxFileStructure:
         assert count == len(sats)
         assert zipfile.is_zipfile(path)
 
-    def test_zip_contains_simulation_xml(self, tmp_path):
+    def test_zip_contains_simulation_json(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
 
         sats = _make_satellites()
@@ -56,9 +64,9 @@ class TestUboxFileStructure:
 
         with zipfile.ZipFile(path) as zf:
             names = zf.namelist()
-            assert "simulation.xml" in names
+            assert "simulation.json" in names
 
-    def test_xml_parses_without_error(self, tmp_path):
+    def test_zip_contains_version_ini(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
 
         sats = _make_satellites()
@@ -66,48 +74,135 @@ class TestUboxFileStructure:
         UboxExporter().export(sats, path, epoch=EPOCH)
 
         with zipfile.ZipFile(path) as zf:
-            xml_bytes = zf.read("simulation.xml")
-        root = ET.fromstring(xml_bytes)
-        assert root.tag == "Simulation"
+            assert "version.ini" in zf.namelist()
+
+    def test_zip_contains_info_json(self, tmp_path):
+        from constellation_generator.adapters.ubox_exporter import UboxExporter
+
+        sats = _make_satellites()
+        path = str(tmp_path / "test.ubox")
+        UboxExporter().export(sats, path, epoch=EPOCH)
+
+        with zipfile.ZipFile(path) as zf:
+            assert "info.json" in zf.namelist()
+            info = json.loads(zf.read("info.json"))
+            assert "Name" in info
+
+    def test_zip_contains_ui_state_json(self, tmp_path):
+        from constellation_generator.adapters.ubox_exporter import UboxExporter
+
+        sats = _make_satellites()
+        path = str(tmp_path / "test.ubox")
+        UboxExporter().export(sats, path, epoch=EPOCH)
+
+        with zipfile.ZipFile(path) as zf:
+            assert "ui-state.json" in zf.namelist()
+
+    def test_simulation_json_parses_valid(self, tmp_path):
+        from constellation_generator.adapters.ubox_exporter import UboxExporter
+
+        sats = _make_satellites()
+        path = str(tmp_path / "test.ubox")
+        UboxExporter().export(sats, path, epoch=EPOCH)
+
+        sim = _parse_simulation(path)
+        assert "Settings" in sim
+        assert "Entities" in sim
 
 
 # ---------------------------------------------------------------------------
-# Earth body
+# Earth entity
 # ---------------------------------------------------------------------------
 
-class TestEarthBody:
+class TestEarthEntity:
     """The simulation must include Earth as the central body."""
 
-    def test_earth_object_present(self, tmp_path):
+    def test_earth_entity_present(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
 
         sats = _make_satellites()
         path = str(tmp_path / "test.ubox")
         UboxExporter().export(sats, path, epoch=EPOCH)
 
-        root = _parse_ubox(path)
-        earth_bodies = [b for b in root.findall("Body")
-                        if b.find("Object") is not None and b.find("Object").text == "Earth"]
-        assert len(earth_bodies) == 1
+        sim = _parse_simulation(path)
+        earth = [e for e in sim["Entities"] if e.get("Name") == "Earth"]
+        assert len(earth) == 1
 
-
-# ---------------------------------------------------------------------------
-# Satellite bodies — Keplerian elements
-# ---------------------------------------------------------------------------
-
-class TestSatelliteKeplerianElements:
-    """Each satellite should be exported with Keplerian orbital elements."""
-
-    def test_correct_number_of_satellite_bodies(self, tmp_path):
+    def test_earth_is_body_type(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
 
         sats = _make_satellites()
         path = str(tmp_path / "test.ubox")
         UboxExporter().export(sats, path, epoch=EPOCH)
 
-        root = _parse_ubox(path)
-        sat_bodies = [b for b in root.findall("Body") if b.find("Orbit") is not None]
-        assert len(sat_bodies) == len(sats)
+        sim = _parse_simulation(path)
+        earth = [e for e in sim["Entities"] if e.get("Name") == "Earth"][0]
+        assert earth["$type"] == "Body"
+
+    def test_earth_has_id_3(self, tmp_path):
+        from constellation_generator.adapters.ubox_exporter import UboxExporter
+
+        sats = _make_satellites()
+        path = str(tmp_path / "test.ubox")
+        UboxExporter().export(sats, path, epoch=EPOCH)
+
+        sim = _parse_simulation(path)
+        earth = [e for e in sim["Entities"] if e.get("Name") == "Earth"][0]
+        assert earth["Id"] == 3
+
+    def test_earth_has_no_parent(self, tmp_path):
+        from constellation_generator.adapters.ubox_exporter import UboxExporter
+
+        sats = _make_satellites()
+        path = str(tmp_path / "test.ubox")
+        UboxExporter().export(sats, path, epoch=EPOCH)
+
+        sim = _parse_simulation(path)
+        earth = [e for e in sim["Entities"] if e.get("Name") == "Earth"][0]
+        assert earth["Parent"] == -1
+
+    def test_earth_has_celestial_component(self, tmp_path):
+        from constellation_generator.adapters.ubox_exporter import UboxExporter
+
+        sats = _make_satellites()
+        path = str(tmp_path / "test.ubox")
+        UboxExporter().export(sats, path, epoch=EPOCH)
+
+        sim = _parse_simulation(path)
+        earth = [e for e in sim["Entities"] if e.get("Name") == "Earth"][0]
+        types = {c["$type"] for c in earth["Components"]}
+        assert "Celestial" in types
+
+    def test_earth_has_appearance_component(self, tmp_path):
+        from constellation_generator.adapters.ubox_exporter import UboxExporter
+
+        sats = _make_satellites()
+        path = str(tmp_path / "test.ubox")
+        UboxExporter().export(sats, path, epoch=EPOCH)
+
+        sim = _parse_simulation(path)
+        earth = [e for e in sim["Entities"] if e.get("Name") == "Earth"][0]
+        types = {c["$type"] for c in earth["Components"]}
+        assert "AppearanceComponent" in types
+
+
+# ---------------------------------------------------------------------------
+# Satellite entities — ECI state vectors
+# ---------------------------------------------------------------------------
+
+class TestSatelliteEntities:
+    """Each satellite should be exported with ECI state vectors."""
+
+    def test_correct_number_of_satellite_entities(self, tmp_path):
+        from constellation_generator.adapters.ubox_exporter import UboxExporter
+
+        sats = _make_satellites()
+        path = str(tmp_path / "test.ubox")
+        UboxExporter().export(sats, path, epoch=EPOCH)
+
+        sim = _parse_simulation(path)
+        sat_entities = [e for e in sim["Entities"] if e.get("Name") != "Earth"]
+        assert len(sat_entities) == len(sats)
 
     def test_satellite_names_preserved(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
@@ -116,26 +211,80 @@ class TestSatelliteKeplerianElements:
         path = str(tmp_path / "test.ubox")
         UboxExporter().export(sats, path, epoch=EPOCH)
 
-        root = _parse_ubox(path)
-        names = {b.find("Name").text for b in root.findall("Body")
-                 if b.find("Name") is not None and b.find("Orbit") is not None}
+        sim = _parse_simulation(path)
+        names = {e["Name"] for e in sim["Entities"] if e.get("Name") != "Earth"}
         expected = {s.name for s in sats}
         assert names == expected
 
-    def test_orbit_references_earth(self, tmp_path):
+    def test_satellites_reference_earth_as_parent(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
 
         sats = _make_satellites()
         path = str(tmp_path / "test.ubox")
         UboxExporter().export(sats, path, epoch=EPOCH)
 
-        root = _parse_ubox(path)
-        for body in root.findall("Body"):
-            orbit = body.find("Orbit")
-            if orbit is not None:
-                assert orbit.get("body") == "Earth"
+        sim = _parse_simulation(path)
+        for entity in sim["Entities"]:
+            if entity.get("Name") != "Earth":
+                assert entity["Parent"] == 3
 
-    def test_semimajor_axis_correct(self, tmp_path):
+    def test_satellites_have_relative_to_1(self, tmp_path):
+        from constellation_generator.adapters.ubox_exporter import UboxExporter
+
+        sats = _make_satellites()
+        path = str(tmp_path / "test.ubox")
+        UboxExporter().export(sats, path, epoch=EPOCH)
+
+        sim = _parse_simulation(path)
+        for entity in sim["Entities"]:
+            if entity.get("Name") != "Earth":
+                assert entity["RelativeTo"] == 1
+
+    def test_satellite_flags_146(self, tmp_path):
+        from constellation_generator.adapters.ubox_exporter import UboxExporter
+
+        sats = _make_satellites()
+        path = str(tmp_path / "test.ubox")
+        UboxExporter().export(sats, path, epoch=EPOCH)
+
+        sim = _parse_simulation(path)
+        for entity in sim["Entities"]:
+            if entity.get("Name") != "Earth":
+                assert entity["Flags"] == 146
+
+    def test_position_is_semicolon_separated(self, tmp_path):
+        from constellation_generator.adapters.ubox_exporter import UboxExporter
+
+        sats = _make_satellites()
+        path = str(tmp_path / "test.ubox")
+        UboxExporter().export(sats, path, epoch=EPOCH)
+
+        sim = _parse_simulation(path)
+        for entity in sim["Entities"]:
+            if entity.get("Name") != "Earth":
+                pos = entity["Position"]
+                parts = pos.split(";")
+                assert len(parts) == 3
+                for p in parts:
+                    float(p)  # must parse as float
+
+    def test_velocity_is_semicolon_separated(self, tmp_path):
+        from constellation_generator.adapters.ubox_exporter import UboxExporter
+
+        sats = _make_satellites()
+        path = str(tmp_path / "test.ubox")
+        UboxExporter().export(sats, path, epoch=EPOCH)
+
+        sim = _parse_simulation(path)
+        for entity in sim["Entities"]:
+            if entity.get("Name") != "Earth":
+                vel = entity["Velocity"]
+                parts = vel.split(";")
+                assert len(parts) == 3
+                for p in parts:
+                    float(p)
+
+    def test_position_magnitude_is_orbital_radius(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
         from constellation_generator.domain.orbital_mechanics import OrbitalConstants
 
@@ -143,48 +292,37 @@ class TestSatelliteKeplerianElements:
         path = str(tmp_path / "test.ubox")
         UboxExporter().export(sats, path, epoch=EPOCH)
 
-        expected_a_km = (OrbitalConstants.R_EARTH + 550_000) / 1000.0
+        expected_r = OrbitalConstants.R_EARTH + 550_000.0
+        sim = _parse_simulation(path)
+        for entity in sim["Entities"]:
+            if entity.get("Name") != "Earth":
+                parts = [float(p) for p in entity["Position"].split(";")]
+                r = math.sqrt(sum(p**2 for p in parts))
+                assert abs(r - expected_r) / expected_r < 0.001
 
-        root = _parse_ubox(path)
-        for body in root.findall("Body"):
-            orbit = body.find("Orbit")
-            if orbit is not None:
-                a_km = float(orbit.get("a"))
-                assert abs(a_km - expected_a_km) < 0.1
-
-    def test_inclination_correct(self, tmp_path):
+    def test_unique_entity_ids(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
 
         sats = _make_satellites()
         path = str(tmp_path / "test.ubox")
         UboxExporter().export(sats, path, epoch=EPOCH)
 
-        root = _parse_ubox(path)
-        for body in root.findall("Body"):
-            orbit = body.find("Orbit")
-            if orbit is not None:
-                inc = float(orbit.get("i"))
-                assert abs(inc - 53.0) < 0.1
+        sim = _parse_simulation(path)
+        ids = [e["Id"] for e in sim["Entities"]]
+        assert len(ids) == len(set(ids))
 
-    def test_raan_matches_satellite(self, tmp_path):
+    def test_satellite_has_particle_component(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
 
         sats = _make_satellites()
         path = str(tmp_path / "test.ubox")
         UboxExporter().export(sats, path, epoch=EPOCH)
 
-        root = _parse_ubox(path)
-        raan_by_name = {}
-        for body in root.findall("Body"):
-            orbit = body.find("Orbit")
-            name_el = body.find("Name")
-            if orbit is not None and name_el is not None:
-                raan_by_name[name_el.text] = float(orbit.get("node"))
-
-        for sat in sats:
-            expected = sat.raan_deg % 360.0
-            actual = raan_by_name[sat.name] % 360.0
-            assert abs(actual - expected) < 0.01, f"{sat.name}: {actual} != {expected}"
+        sim = _parse_simulation(path)
+        for entity in sim["Entities"]:
+            if entity.get("Name") != "Earth":
+                types = {c["$type"] for c in entity["Components"]}
+                assert "ParticleComponent" in types
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +330,7 @@ class TestSatelliteKeplerianElements:
 # ---------------------------------------------------------------------------
 
 class TestSettings:
-    """Simulation settings should include the epoch."""
+    """Simulation settings should include the epoch and camera targeting Earth."""
 
     def test_date_setting_present(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
@@ -201,32 +339,38 @@ class TestSettings:
         path = str(tmp_path / "test.ubox")
         UboxExporter().export(sats, path, epoch=EPOCH)
 
-        root = _parse_ubox(path)
-        settings = root.find("Settings")
-        assert settings is not None
-        assert settings.get("date") is not None
+        sim = _parse_simulation(path)
+        assert "Date" in sim
 
-    def test_date_matches_epoch(self, tmp_path):
+    def test_date_contains_epoch(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
 
         sats = _make_satellites()
         path = str(tmp_path / "test.ubox")
         UboxExporter().export(sats, path, epoch=EPOCH)
 
-        root = _parse_ubox(path)
-        settings = root.find("Settings")
-        assert settings.get("date") == "2026-03-20"
+        sim = _parse_simulation(path)
+        assert "2026-03-20" in sim["Date"]
 
-    def test_focus_on_earth(self, tmp_path):
+    def test_camera_targets_earth(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
 
         sats = _make_satellites()
         path = str(tmp_path / "test.ubox")
         UboxExporter().export(sats, path, epoch=EPOCH)
 
-        root = _parse_ubox(path)
-        settings = root.find("Settings")
-        assert settings.get("focus") == "Earth"
+        sim = _parse_simulation(path)
+        assert sim["Settings"]["CameraTargetId"] == 3
+
+    def test_custom_name(self, tmp_path):
+        from constellation_generator.adapters.ubox_exporter import UboxExporter
+
+        sats = _make_satellites()
+        path = str(tmp_path / "test.ubox")
+        UboxExporter(name="MyConstellation").export(sats, path, epoch=EPOCH)
+
+        sim = _parse_simulation(path)
+        assert sim["Name"] == "MyConstellation"
 
 
 # ---------------------------------------------------------------------------
@@ -234,7 +378,7 @@ class TestSettings:
 # ---------------------------------------------------------------------------
 
 class TestPhysicalProperties:
-    """When DragConfig is provided, satellites get mass and diameter."""
+    """When DragConfig is provided, satellites get mass and radius."""
 
     def test_mass_set_from_drag_config(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
@@ -244,16 +388,13 @@ class TestPhysicalProperties:
         path = str(tmp_path / "test.ubox")
         UboxExporter(drag_config=drag).export(sats, path, epoch=EPOCH)
 
-        root = _parse_ubox(path)
-        for body in root.findall("Body"):
-            mass_el = body.find("Mass")
-            if body.find("Orbit") is not None:
-                assert mass_el is not None
-                # Mass in ubox is 10^20 kg, so 260 kg = 260 / 1e20
-                mass_val = float(mass_el.text)
-                assert mass_val > 0
+        sim = _parse_simulation(path)
+        for entity in sim["Entities"]:
+            if entity.get("Name") != "Earth":
+                assert entity["Mass"] == 260.0
+                assert entity["PhysicsMass"] == 260.0
 
-    def test_diameter_set_from_drag_config(self, tmp_path):
+    def test_radius_derived_from_area(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
 
         sats = _make_satellites()
@@ -261,26 +402,23 @@ class TestPhysicalProperties:
         path = str(tmp_path / "test.ubox")
         UboxExporter(drag_config=drag).export(sats, path, epoch=EPOCH)
 
-        root = _parse_ubox(path)
-        for body in root.findall("Body"):
-            diam_el = body.find("Diameter")
-            if body.find("Orbit") is not None:
-                assert diam_el is not None
-                diam_val = float(diam_el.text)
-                # sqrt(10/pi)*2 ≈ 3.57 m = 0.00357 km
-                assert diam_val > 0
+        expected_radius = math.sqrt(10.0 / math.pi)
+        sim = _parse_simulation(path)
+        for entity in sim["Entities"]:
+            if entity.get("Name") != "Earth":
+                assert abs(entity["Radius"] - expected_radius) < 0.001
 
-    def test_no_mass_without_drag_config(self, tmp_path):
+    def test_default_mass_without_drag_config(self, tmp_path):
         from constellation_generator.adapters.ubox_exporter import UboxExporter
 
         sats = _make_satellites()
         path = str(tmp_path / "test.ubox")
         UboxExporter().export(sats, path, epoch=EPOCH)
 
-        root = _parse_ubox(path)
-        for body in root.findall("Body"):
-            if body.find("Orbit") is not None:
-                assert body.find("Mass") is None
+        sim = _parse_simulation(path)
+        for entity in sim["Entities"]:
+            if entity.get("Name") != "Earth":
+                assert entity["Mass"] == 500.0
 
 
 # ---------------------------------------------------------------------------
@@ -305,38 +443,6 @@ class TestReturnCount:
         count = UboxExporter().export([], path, epoch=EPOCH)
         assert count == 0
 
-        # Should still produce valid ubox with just Earth
-        root = _parse_ubox(path)
-        assert root.find("Body") is not None
-
-
-# ---------------------------------------------------------------------------
-# Trail visualization
-# ---------------------------------------------------------------------------
-
-class TestTrailSettings:
-    """Satellites should have orbit trails enabled."""
-
-    def test_trail_segments_set(self, tmp_path):
-        from constellation_generator.adapters.ubox_exporter import UboxExporter
-
-        sats = _make_satellites()
-        path = str(tmp_path / "test.ubox")
-        UboxExporter().export(sats, path, epoch=EPOCH)
-
-        root = _parse_ubox(path)
-        settings = root.find("Settings")
-        trail = settings.get("trailsegments")
-        assert trail is not None
-        assert int(trail) > 0
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _parse_ubox(path: str) -> ET.Element:
-    """Extract and parse simulation.xml from a .ubox file."""
-    with zipfile.ZipFile(path) as zf:
-        xml_bytes = zf.read("simulation.xml")
-    return ET.fromstring(xml_bytes)
+        sim = _parse_simulation(path)
+        earth = [e for e in sim["Entities"] if e.get("Name") == "Earth"]
+        assert len(earth) == 1
