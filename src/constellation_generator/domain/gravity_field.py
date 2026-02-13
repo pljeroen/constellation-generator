@@ -71,14 +71,24 @@ def load_gravity_field(
     """Load EGM96 coefficients and precompute recursion coefficients.
 
     Args:
-        max_degree: Maximum degree/order (2-70).
-        path: Path to coefficient JSON file. Defaults to bundled egm96_70.json.
+        max_degree: Maximum degree/order (2+). Bundled data supports up to 70.
+            For higher degrees (120, 200, 360), provide a custom coefficient
+            JSON file via the ``path`` parameter. The JSON format is::
+
+                {"name": "...", "max_degree": N, "gm": ..., "radius": ...,
+                 "coefficients": {"n,m": [C_nm, S_nm], ...}}
+
+        path: Path to coefficient JSON file. When None (default), selects the
+            bundled egm96_70.json (supports max_degree up to 70).
 
     Returns:
         Precomputed GravityFieldModel ready for acceleration computation.
+
+    Raises:
+        ValueError: If max_degree < 2 or exceeds the data file's max degree.
     """
-    if max_degree < 2 or max_degree > 70:
-        raise ValueError(f"max_degree must be 2-70, got {max_degree}")
+    if max_degree < 2:
+        raise ValueError(f"max_degree must be >= 2, got {max_degree}")
 
     if path is None:
         path = pathlib.Path(__file__).parent.parent / "data" / "egm96_70.json"
@@ -92,6 +102,14 @@ def load_gravity_field(
     radius = raw["radius"]
     name = raw["name"]
     coefficients = raw["coefficients"]
+    data_max_degree = raw.get("max_degree", max_degree)
+
+    if max_degree > data_max_degree:
+        raise ValueError(
+            f"max_degree {max_degree} exceeds data file's max degree "
+            f"{data_max_degree}. Provide a higher-degree coefficient file "
+            f"via the path parameter."
+        )
 
     # N+1 for V/W recursion (acceleration formulas reference one degree higher)
     n_ext = max_degree + 1

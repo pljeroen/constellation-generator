@@ -1,9 +1,13 @@
 # Copyright (c) 2026 Jeroen Visser. All rights reserved.
 # Licensed under the Commercial License — see LICENSE-COMMERCIAL.md.
-"""IAU 2006 precession, IAU 2000B nutation, and GCRS↔ITRS transformations.
+"""IAU 2006 precession, IAU 2000A/B nutation, and GCRS-ITRS transformations.
 
-Implements the IAU 2006/2000A precession-nutation framework with the
-truncated 77-term IAU 2000B nutation series (~1 mas accuracy).
+Implements the IAU 2006/2000A precession-nutation framework. Default uses the
+full 1320-term IAU 2000A nutation series (~0.001 mas accuracy). Falls back to
+the 77-term IAU 2000B series (~1 mas) if requested.
+
+NumPy vectorized: the nutation series evaluation uses array operations for
+all 1320 terms in a single pass (vs per-term Python loop).
 
 References:
     IERS Conventions 2010, Chapters 5 and 6.
@@ -17,6 +21,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
 from constellation_generator.domain.time_systems import AstroTime
 
 # --------------------------------------------------------------------------- #
@@ -25,6 +31,7 @@ from constellation_generator.domain.time_systems import AstroTime
 
 _ARCSEC_TO_RAD: float = math.pi / (180.0 * 3600.0)
 _MAS_TO_RAD: float = _ARCSEC_TO_RAD / 1000.0
+_TWO_PI: float = 2.0 * math.pi
 
 # Frame bias (IERS 2010, Eq. 5.4)
 _DA0: float = -14.6e-3 * _ARCSEC_TO_RAD   # dα₀ in radians
@@ -32,14 +39,87 @@ _XI0: float = -16.617e-3 * _ARCSEC_TO_RAD  # ξ₀
 _ETA0: float = -6.819e-3 * _ARCSEC_TO_RAD  # η₀
 
 # --------------------------------------------------------------------------- #
-# Nutation data loading
+# Nutation data loading (cached NumPy arrays)
 # --------------------------------------------------------------------------- #
 
+_NUT_CACHE: dict[str, Optional[dict]] = {"2000A": None, "2000B": None}
+
+
+def _load_nutation_arrays(model: str = "2000A") -> dict:
+    """Load nutation coefficients into pre-built NumPy arrays.
+
+    Returns dict with keys:
+        mults: (N, num_args) int array of argument multipliers
+        Sp, Spp, Cp, Ce, Cep, Se: (N,) float arrays of coefficients
+        unit: float conversion factor (coefficient units -> arcseconds)
+        num_args: 5 for 2000B, 14 for 2000A
+    """
+    if _NUT_CACHE[model] is not None:
+        return _NUT_CACHE[model]
+
+    if model == "2000A":
+        data_path = Path(__file__).parent.parent / "data" / "iau2000a_nutation.json"
+    else:
+        data_path = Path(__file__).parent.parent / "data" / "iau2000b_nutation.json"
+
+    with open(data_path) as f:
+        data = json.load(f)
+
+    terms = data["terms"]
+    unit = data["unit_factor_arcsec"]  # 1e-6 for 2000A, 1e-7 for 2000B
+    n = len(terms)
+
+    if model == "2000A":
+        # 14 fundamental arguments: 5 Delaunay + 9 planetary
+        arg_keys = ["l", "lp", "F", "D", "Om",
+                     "L_Me", "L_Ve", "L_E", "L_Ma",
+                     "L_J", "L_Sa", "L_U", "L_Ne", "p_A"]
+        coeff_keys_extra = ["Cpp", "Sep"]
+    else:
+        arg_keys = ["l", "lp", "F", "D", "Om"]
+        coeff_keys_extra = []
+
+    mults = np.zeros((n, len(arg_keys)), dtype=np.float64)
+    Sp = np.zeros(n)
+    Spp = np.zeros(n)
+    Cp = np.zeros(n)
+    Ce = np.zeros(n)
+    Cep = np.zeros(n)
+    Se = np.zeros(n)
+    Cpp = np.zeros(n)
+    Sep = np.zeros(n)
+
+    for i, term in enumerate(terms):
+        for j, key in enumerate(arg_keys):
+            mults[i, j] = term[key]
+        Sp[i] = term["Sp"]
+        Spp[i] = term.get("Spp", 0.0)
+        Cp[i] = term.get("Cp", 0.0)
+        Ce[i] = term.get("Ce", 0.0)
+        Cep[i] = term.get("Cep", 0.0)
+        Se[i] = term.get("Se", 0.0)
+        if model == "2000A":
+            Cpp[i] = term.get("Cpp", 0.0)
+            Sep[i] = term.get("Sep", 0.0)
+
+    result = {
+        "mults": mults,
+        "Sp": Sp, "Spp": Spp, "Cp": Cp, "Cpp": Cpp,
+        "Ce": Ce, "Cep": Cep, "Se": Se, "Sep": Sep,
+        "unit": unit,
+        "num_args": len(arg_keys),
+        "model": model,
+    }
+    _NUT_CACHE[model] = result
+    return result
+
+
+# Backward compat: keep the old dict-based loader for tests that import it
 _NUTATION_TERMS: Optional[list] = None
 
 
 def _load_nutation_terms() -> list:
-    """Load IAU 2000B nutation coefficients from bundled JSON."""
+    """Load IAU 2000B nutation coefficients from bundled JSON (legacy)."""
     global _NUTATION_TERMS
     if _NUTATION_TERMS is not None:
         return _NUTATION_TERMS
@@ -53,7 +133,7 @@ def _load_nutation_terms() -> list:
 
 
 # --------------------------------------------------------------------------- #
-# 3x3 matrix utilities (tuples of tuples, no numpy)
+# 3x3 matrix utilities (tuples of tuples for API compatibility)
 # --------------------------------------------------------------------------- #
 
 def _r1(angle: float) -> tuple[tuple[float, ...], ...]:
@@ -104,13 +184,13 @@ def _mat_vec(M: tuple, v: tuple) -> tuple[float, float, float]:
 def fundamental_arguments(t_tt: float) -> tuple[float, float, float, float, float]:
     """Compute Delaunay fundamental arguments at TT Julian centuries from J2000.
 
-    Returns (l, l', F, D, Ω) in radians.
+    Returns (l, l', F, D, Omega) in radians.
 
     l  = Mean anomaly of the Moon
     l' = Mean anomaly of the Sun
     F  = Mean argument of latitude of the Moon
     D  = Mean elongation of the Moon from the Sun
-    Ω  = Mean longitude of the ascending node of the Moon
+    Omega  = Mean longitude of the ascending node of the Moon
 
     IERS Conventions 2010, Table 5.2.
     """
@@ -144,22 +224,53 @@ def fundamental_arguments(t_tt: float) -> tuple[float, float, float, float, floa
                        + t * (0.006593
                               + t * (-0.00003169)))))
 
-    # Ω: Mean longitude of the ascending node of the Moon
+    # Omega: Mean longitude of the ascending node of the Moon
     Om = (450160.398036
           + t * (-6962890.5431
                  + t * (7.4722
                         + t * (0.007702
                                + t * (-0.00005939)))))
 
-    # Convert arcseconds to radians, reduce modulo 2π
+    # Convert arcseconds to radians, reduce modulo 2pi
     to_rad = _ARCSEC_TO_RAD
-    l_rad = (l * to_rad) % (2 * math.pi)
-    lp_rad = (lp * to_rad) % (2 * math.pi)
-    F_rad = (F * to_rad) % (2 * math.pi)
-    D_rad = (D * to_rad) % (2 * math.pi)
-    Om_rad = (Om * to_rad) % (2 * math.pi)
+    l_rad = (l * to_rad) % _TWO_PI
+    lp_rad = (lp * to_rad) % _TWO_PI
+    F_rad = (F * to_rad) % _TWO_PI
+    D_rad = (D * to_rad) % _TWO_PI
+    Om_rad = (Om * to_rad) % _TWO_PI
 
     return l_rad, lp_rad, F_rad, D_rad, Om_rad
+
+
+def planetary_arguments(t_tt: float) -> tuple[float, ...]:
+    """Compute 9 planetary fundamental arguments at TT Julian centuries.
+
+    Returns (L_Me, L_Ve, L_E, L_Ma, L_J, L_Sa, L_U, L_Ne, p_A) in radians.
+
+    IERS Conventions 2003 (Simon et al. 1994).
+    """
+    t = t_tt
+
+    # Mean longitude of Mercury (radians)
+    L_Me = (4.402608842 + 2608.7903141574 * t) % _TWO_PI
+    # Mean longitude of Venus
+    L_Ve = (3.176146697 + 1021.3285546211 * t) % _TWO_PI
+    # Mean longitude of Earth
+    L_E = (1.753470314 + 628.3075849991 * t) % _TWO_PI
+    # Mean longitude of Mars
+    L_Ma = (6.203480913 + 334.0612426700 * t) % _TWO_PI
+    # Mean longitude of Jupiter
+    L_J = (0.599546497 + 52.9690962641 * t) % _TWO_PI
+    # Mean longitude of Saturn
+    L_Sa = (0.874016757 + 21.3299104960 * t) % _TWO_PI
+    # Mean longitude of Uranus
+    L_U = (5.481293872 + 7.4781598567 * t) % _TWO_PI
+    # Mean longitude of Neptune
+    L_Ne = (5.311886287 + 3.8133035638 * t) % _TWO_PI
+    # General accumulated precession in longitude
+    p_A = (0.02438175 + 0.00000538691 * t) * t
+
+    return L_Me, L_Ve, L_E, L_Ma, L_J, L_Sa, L_U, L_Ne, p_A
 
 
 # --------------------------------------------------------------------------- #
@@ -177,14 +288,13 @@ def precession_matrix(t_tt: float) -> tuple[tuple[float, ...], ...]:
     Returns
     -------
     P : 3x3 rotation matrix (tuple of tuples)
-        Precession matrix such that r_mean = P · r_GCRS_no_bias.
+        Precession matrix such that r_mean = P * r_GCRS_no_bias.
 
     Reference: IERS Conventions 2010, Eqs. 5.39-5.40.
     """
     t = t_tt
 
     # Fukushima-Williams angles (arcseconds)
-    # γ̄ (gamb): IERS 2010 Eq. 5.39
     gamb = (-0.052928
             + t * (10.556378
                    + t * (0.4932044
@@ -192,7 +302,6 @@ def precession_matrix(t_tt: float) -> tuple[tuple[float, ...], ...]:
                                  + t * (-0.000002788
                                         + t * 0.0000000260)))))
 
-    # φ̄ (phib): IERS 2010 Eq. 5.39
     phib = (84381.412819
             + t * (-46.811016
                    + t * (0.0511268
@@ -200,7 +309,6 @@ def precession_matrix(t_tt: float) -> tuple[tuple[float, ...], ...]:
                                  + t * (-0.000000440
                                         + t * (-0.0000000176))))))
 
-    # ψ̄ (psib): IERS 2010 Eq. 5.39
     psib = (-0.041775
             + t * (5038.481484
                    + t * (1.5584175
@@ -208,7 +316,6 @@ def precession_matrix(t_tt: float) -> tuple[tuple[float, ...], ...]:
                                  + t * (-0.000026452
                                         + t * (-0.0000000148))))))
 
-    # ε_A (mean obliquity): IERS 2010 Eq. 5.40
     epsa = (84381.406
             + t * (-46.836769
                    + t * (-0.0001831
@@ -216,13 +323,12 @@ def precession_matrix(t_tt: float) -> tuple[tuple[float, ...], ...]:
                                  + t * (-0.000000576
                                         + t * (-0.0000000434))))))
 
-    # Convert to radians
     gamb_rad = gamb * _ARCSEC_TO_RAD
     phib_rad = phib * _ARCSEC_TO_RAD
     psib_rad = psib * _ARCSEC_TO_RAD
     epsa_rad = epsa * _ARCSEC_TO_RAD
 
-    # P = R1(-ε_A) · R3(-ψ̄) · R1(φ̄) · R3(γ̄)
+    # P = R1(-eps_A) * R3(-psi_bar) * R1(phi_bar) * R3(gamma_bar)
     return _mat_mul(
         _r1(-epsa_rad),
         _mat_mul(
@@ -233,7 +339,7 @@ def precession_matrix(t_tt: float) -> tuple[tuple[float, ...], ...]:
 
 
 def mean_obliquity(t_tt: float) -> float:
-    """Mean obliquity of the ecliptic ε_A in radians (IAU 2006).
+    """Mean obliquity of the ecliptic eps_A in radians (IAU 2006).
 
     IERS Conventions 2010, Eq. 5.40.
     """
@@ -248,49 +354,69 @@ def mean_obliquity(t_tt: float) -> float:
 
 
 # --------------------------------------------------------------------------- #
-# IAU 2000B Nutation
+# IAU 2000A/B Nutation (NumPy vectorized)
 # --------------------------------------------------------------------------- #
 
-def nutation_angles(t_tt: float) -> tuple[float, float]:
-    """Compute nutation in longitude (Δψ) and obliquity (Δε).
-
-    Uses the IAU 2000B truncated 77-term series.
-    Accuracy: ~1 mas (sufficient for satellite work).
+def nutation_angles(
+    t_tt: float,
+    model: str = "2000A",
+) -> tuple[float, float]:
+    """Compute nutation in longitude (dpsi) and obliquity (deps).
 
     Parameters
     ----------
     t_tt : float
         Julian centuries of TT from J2000.0.
+    model : str
+        "2000A" (default, 1320 terms, ~0.001 mas) or
+        "2000B" (77 terms, ~1 mas).
 
     Returns
     -------
     (dpsi, deps) : tuple[float, float]
         Nutation in longitude and obliquity, in radians.
     """
-    terms = _load_nutation_terms()
+    nut = _load_nutation_arrays(model)
+    mults = nut["mults"]
+    unit = nut["unit"] * _ARCSEC_TO_RAD  # -> radians
+
+    # Build fundamental arguments array
     l, lp, F, D, Om = fundamental_arguments(t_tt)
-    args = (l, lp, F, D, Om)
 
-    unit = 1e-7 * _ARCSEC_TO_RAD  # 0.1 μas → radians
+    if nut["num_args"] == 14:
+        # IAU 2000A: 5 Delaunay + 9 planetary
+        L_Me, L_Ve, L_E, L_Ma, L_J, L_Sa, L_U, L_Ne, p_A = planetary_arguments(t_tt)
+        args = np.array([l, lp, F, D, Om, L_Me, L_Ve, L_E, L_Ma, L_J, L_Sa, L_U, L_Ne, p_A])
+    else:
+        # IAU 2000B: 5 Delaunay only
+        args = np.array([l, lp, F, D, Om])
 
-    dpsi = 0.0
-    deps = 0.0
+    # Vectorized argument computation: mults (N, num_args) @ args (num_args,) -> (N,)
+    phi = mults @ args
 
-    for term in terms:
-        # Linear combination of fundamental arguments
-        arg = (term["l"] * args[0]
-               + term["lp"] * args[1]
-               + term["F"] * args[2]
-               + term["D"] * args[3]
-               + term["Om"] * args[4])
+    # Vectorized trig
+    sin_phi = np.sin(phi)
+    cos_phi = np.cos(phi)
 
-        sin_arg = math.sin(arg)
-        cos_arg = math.cos(arg)
+    # Vectorized summation
+    Sp = nut["Sp"]
+    Spp = nut["Spp"]
+    Cp = nut["Cp"]
+    Ce = nut["Ce"]
+    Cep = nut["Cep"]
+    Se = nut["Se"]
 
-        dpsi += (term["Sp"] + term["Spp"] * t_tt) * sin_arg + term["Cp"] * cos_arg
-        deps += (term["Ce"] + term["Cep"] * t_tt) * cos_arg + term["Se"] * sin_arg
+    dpsi = np.sum((Sp + Spp * t_tt) * sin_phi + Cp * cos_phi)
+    deps = np.sum((Ce + Cep * t_tt) * cos_phi + Se * sin_phi)
 
-    return dpsi * unit, deps * unit
+    # Add time-dependent cosine terms for 2000A (Cpp, Sep)
+    if model == "2000A":
+        Cpp = nut["Cpp"]
+        Sep = nut["Sep"]
+        dpsi += np.sum(Cpp * t_tt * cos_phi)
+        deps += np.sum(Sep * t_tt * sin_phi)
+
+    return float(dpsi * unit), float(deps * unit)
 
 
 def nutation_matrix(
@@ -300,7 +426,7 @@ def nutation_matrix(
 ) -> tuple[tuple[float, ...], ...]:
     """Construct the nutation rotation matrix N.
 
-    N = R1(-ε₀ - Δε) · R3(-Δψ) · R1(ε₀)
+    N = R1(-(eps0 + deps)) * R3(-dpsi) * R1(eps0)
 
     Parameters
     ----------
@@ -325,26 +451,22 @@ def frame_bias_matrix() -> tuple[tuple[float, ...], ...]:
     """Constant GCRS frame bias matrix B.
 
     Accounts for the offset between the GCRS pole and the mean J2000 pole:
-        dα₀ = -14.6 mas, ξ₀ = -16.617 mas, η₀ = -6.819 mas
+        da0 = -14.6 mas, xi0 = -16.617 mas, eta0 = -6.819 mas
 
-    B = R1(-η₀) · R2(ξ₀) · R3(dα₀)
+    B = R1(-eta0) * R2(xi0) * R3(da0)
 
     IERS Conventions 2010, Eq. 5.5.
     """
-    # For such small angles, we can use the exact rotation matrices
-    # R2 for Y-axis rotation
     c_xi, s_xi = math.cos(_XI0), math.sin(_XI0)
     c_eta, s_eta = math.cos(_ETA0), math.sin(_ETA0)
     c_da, s_da = math.cos(_DA0), math.sin(_DA0)
 
-    # R2(ξ₀)
     R2_xi = (
         (c_xi, 0.0, -s_xi),
         (0.0, 1.0, 0.0),
         (s_xi, 0.0, c_xi),
     )
 
-    # R1(-η₀) · R2(ξ₀) · R3(dα₀)
     return _mat_mul(_r1(-_ETA0), _mat_mul(R2_xi, _r3(_DA0)))
 
 
@@ -355,7 +477,7 @@ def frame_bias_matrix() -> tuple[tuple[float, ...], ...]:
 def earth_rotation_angle(ut1_jd: float) -> float:
     """Compute Earth Rotation Angle from UT1 Julian Date.
 
-    ERA = 2π(0.7790572732640 + 1.00273781191135448 · D_u)
+    ERA = 2pi(0.7790572732640 + 1.00273781191135448 * D_u)
 
     where D_u is the UT1 Julian Date minus 2451545.0 (J2000.0).
 
@@ -368,28 +490,29 @@ def earth_rotation_angle(ut1_jd: float) -> float:
 
     Returns
     -------
-    ERA in radians, normalized to [0, 2π).
+    ERA in radians, normalized to [0, 2pi).
     """
     Du = ut1_jd - 2451545.0
-    theta = 2 * math.pi * (0.7790572732640 + 1.00273781191135448 * Du)
-    return theta % (2 * math.pi)
+    theta = _TWO_PI * (0.7790572732640 + 1.00273781191135448 * Du)
+    return theta % _TWO_PI
 
 
 # --------------------------------------------------------------------------- #
-# Full GCRS → ITRS transformation
+# Full GCRS -> ITRS transformation
 # --------------------------------------------------------------------------- #
 
 def gcrs_to_itrs_matrix(
     t: AstroTime,
     ut1_utc: float = 0.0,
+    nutation_model: str = "2000A",
 ) -> tuple[tuple[float, ...], ...]:
-    """Compute the full GCRS → ITRS rotation matrix.
+    """Compute the full GCRS -> ITRS rotation matrix.
 
     Without EOP data:
-        M = R3(ERA) · N · P · B
+        M = R3(ERA) * N * P * B
 
     With EOP data (ut1_utc provided):
-        M = W · R3(ERA) · N · P · B
+        M = W * R3(ERA) * N * P * B
     where W is the polar motion matrix (identity without EOP).
 
     Parameters
@@ -398,6 +521,8 @@ def gcrs_to_itrs_matrix(
         Epoch for the transformation.
     ut1_utc : float
         UT1-UTC correction in seconds. Default 0.0 (no EOP).
+    nutation_model : str
+        "2000A" (default) or "2000B".
 
     Returns
     -------
@@ -405,18 +530,13 @@ def gcrs_to_itrs_matrix(
     """
     t_tt = t.to_julian_centuries_tt()
 
-    # Frame bias
     B = frame_bias_matrix()
-
-    # Precession
     P = precession_matrix(t_tt)
 
-    # Nutation
-    dpsi, deps = nutation_angles(t_tt)
+    dpsi, deps = nutation_angles(t_tt, model=nutation_model)
     eps0 = mean_obliquity(t_tt)
     N = nutation_matrix(dpsi, deps, eps0)
 
-    # Earth rotation angle: UT1 JD = UTC JD + ut1_utc/86400
     from constellation_generator.domain.time_systems import datetime_to_jd
     dt_utc = t.to_utc_datetime()
     jd_utc = datetime_to_jd(dt_utc)
@@ -425,7 +545,6 @@ def gcrs_to_itrs_matrix(
     era = earth_rotation_angle(jd_ut1)
     R_era = _r3(era)
 
-    # Combine: M = R3(ERA) · N · P · B
     NPB = _mat_mul(N, _mat_mul(P, B))
     return _mat_mul(R_era, NPB)
 
@@ -434,8 +553,9 @@ def eci_to_ecef_precise(
     pos_eci: tuple[float, float, float],
     t: AstroTime,
     ut1_utc: float = 0.0,
+    nutation_model: str = "2000A",
 ) -> tuple[float, float, float]:
-    """High-fidelity GCRS → ITRS position transformation.
+    """High-fidelity GCRS -> ITRS position transformation.
 
     Parameters
     ----------
@@ -445,10 +565,12 @@ def eci_to_ecef_precise(
         Epoch.
     ut1_utc : float
         UT1-UTC correction in seconds.
+    nutation_model : str
+        "2000A" (default) or "2000B".
 
     Returns
     -------
     Position in ITRS/ECEF frame (meters).
     """
-    M = gcrs_to_itrs_matrix(t, ut1_utc)
+    M = gcrs_to_itrs_matrix(t, ut1_utc, nutation_model=nutation_model)
     return _mat_vec(M, pos_eci)

@@ -84,10 +84,10 @@ class TestGravityFieldModel:
             model_70.max_degree = 10  # type: ignore[misc]
 
     def test_invalid_degree_raises(self):
-        """max_degree < 2 or > 70 raises ValueError."""
+        """max_degree < 2 or exceeding data file raises ValueError."""
         with pytest.raises(ValueError):
             load_gravity_field(max_degree=1)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="exceeds data file"):
             load_gravity_field(max_degree=71)
 
     def test_egm96_reference_constants(self, model_70):
