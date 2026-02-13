@@ -88,7 +88,7 @@ The following files are **not** covered by the MIT License:
   `test_validation_crosscheck.py`, `test_validation_sp3.py`,
   `test_viewer_server.py`
 
-Copyright (c) 2026 Jeroen Michaël Visser. All rights reserved.
+Copyright (c) 2026 Jeroen Visser. All rights reserved.
 
 ## 2. Free use
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Jeroen Michaël Visser. All rights reserved.
+# Copyright (c) 2026 Jeroen Visser. All rights reserved.
 # Licensed under the terms in LICENSE-COMMERCIAL.md.
 # Free for personal, educational, and academic use.
 # Commercial use requires a paid license — see LICENSE-COMMERCIAL.md.
@@ -100,7 +100,7 @@ def _mat_inverse_3x3(m: list[list[float]]) -> list[list[float]]:
 
     det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
     if abs(det) < 1e-30:
-        return _mat_identity(3)
+        raise ValueError("Singular 3x3 matrix — filter may have diverged")
 
     inv_det = 1.0 / det
     return [
@@ -180,7 +180,7 @@ def _kalman_update(
     H = [I_3x3 | 0_3x3] — position-only observation.
 
     Returns:
-        (state_updated, covariance_updated, post_fit_residual_magnitude)
+        (state_updated, covariance_updated, pre_fit_residual_magnitude)
     """
     # Measurement matrix H (3x6): [I_3 | 0_3]
     # Innovation: y = z - H * x_pred = z - x_pred[:3]
@@ -208,15 +208,22 @@ def _kalman_update(
         for j in range(3):
             x_new[i] += k[i][j] * y[j]
 
-    # Covariance update: P = (I - K*H) * P_pred
-    # K*H is 6x6
+    # Joseph stabilized covariance update:
+    # P = (I - KH) * P_pred * (I - KH)^T + K * R * K^T
+    # Guarantees symmetry and positive semi-definiteness.
     kh = _mat_zeros(6, 6)
     for i in range(6):
         for j in range(3):
             kh[i][j] = k[i][j]  # H has identity in first 3 cols
 
     i_kh = _mat_sub(_mat_identity(6), kh)
-    p_new = _mat_multiply(i_kh, p_pred)
+    i_kh_t = _mat_transpose(i_kh)
+    p_joseph = _mat_multiply(_mat_multiply(i_kh, p_pred), i_kh_t)
+
+    # K * R * K^T term (R = noise_std^2 * I_3)
+    k_t = _mat_transpose(k)
+    kk_t = _mat_multiply(k, k_t)
+    p_new = _mat_add(p_joseph, _mat_scale(kk_t, r_sq))
 
     # Post-fit residual
     residual = math.sqrt(y[0]**2 + y[1]**2 + y[2]**2)

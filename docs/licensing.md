@@ -25,7 +25,7 @@ Use freely for any purpose. See [LICENSE](../LICENSE).
 
 ### Commercial (extended modules)
 
-49 domain modules and 4 adapters. Copyright "Jeroen Michaël Visser".
+49 domain modules and 4 adapters. Copyright "Jeroen Visser".
 
 **Free for**: personal use, educational use, academic research.
 
@@ -33,16 +33,6 @@ Use freely for any purpose. See [LICENSE](../LICENSE).
 EUR 2,000.
 
 See [LICENSE-COMMERCIAL.md](../LICENSE-COMMERCIAL.md) for full terms.
-
-## Boundary rule
-
-The licensing boundary is defined by what's on the git remote:
-
-- **On the remote** = the license stated in the file header applies
-- **Not on the remote** = commercial
-
-In practice: MIT core modules carry MIT headers, commercial modules carry
-commercial headers. The file header is the source of truth.
 
 ## What's commercial
 
@@ -69,7 +59,7 @@ Check the copyright line at the top of any file:
 # Licensed under the MIT License — see LICENSE.
 
 # Commercial:
-# Copyright (c) 2026 Jeroen Michaël Visser. All rights reserved.
+# Copyright (c) 2026 Jeroen Visser. All rights reserved.
 # Licensed under the terms in LICENSE-COMMERCIAL.md.
 ```
 

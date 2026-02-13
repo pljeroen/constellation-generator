@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Jeroen Michaël Visser. All rights reserved.
+# Copyright (c) 2026 Jeroen Visser. All rights reserved.
 # Licensed under the terms in LICENSE-COMMERCIAL.md.
 # Free for personal, educational, and academic use.
 # Commercial use requires a paid license — see LICENSE-COMMERCIAL.md.
@@ -169,12 +169,15 @@ def _bisect_event(
     Returns:
         Approximate root time (seconds since reference).
     """
+    f_a = f(t_a)
     for _ in range(max_iter):
         t_mid = (t_a + t_b) / 2.0
-        if f(t_mid) * f(t_a) < 0:
+        f_mid = f(t_mid)
+        if f_mid * f_a < 0:
             t_b = t_mid
         else:
             t_a = t_mid
+            f_a = f_mid
         if abs(t_b - t_a) < tol_s:
             break
     return (t_a + t_b) / 2.0

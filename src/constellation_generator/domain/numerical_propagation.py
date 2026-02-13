@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Jeroen Michaël Visser. All rights reserved.
+# Copyright (c) 2026 Jeroen Visser. All rights reserved.
 # Licensed under the terms in LICENSE-COMMERCIAL.md.
 # Free for personal, educational, and academic use.
 # Commercial use requires a paid license — see LICENSE-COMMERCIAL.md.
@@ -188,6 +188,21 @@ _CS_COEFFS: dict[tuple[int, int], tuple[float, float]] = {
 }
 
 
+def _norm_factor(n: int, m: int) -> float:
+    """Normalization factor N_nm for fully normalized Legendre polynomials.
+
+    N_nm = sqrt((2 - delta_{m,0}) * (2n+1) * (n-m)! / (n+m)!)
+
+    Used to convert unnormalized harmonic coefficients to normalized form.
+    """
+    delta = 1 if m == 0 else 0
+    # Compute (n-m)! / (n+m)! as product to avoid large factorials
+    ratio = 1.0
+    for k in range(n - m + 1, n + m + 1):
+        ratio /= k
+    return math.sqrt((2 - delta) * (2 * n + 1) * ratio)
+
+
 def _gmst_rad(epoch: datetime) -> float:
     """Greenwich Mean Sidereal Time in radians.
 
@@ -202,15 +217,26 @@ class SphericalHarmonicGravity:
 
     Implements the Montenbruck & Gill Ch. 3.2 algorithm:
     1. Rotate ECI to ECEF using GMST
-    2. Compute associated Legendre polynomials via recursion
-    3. Sum gravity acceleration in ECEF
+    2. Compute fully normalized associated Legendre polynomials via recursion
+    3. Sum gravity acceleration in ECEF using normalized coefficients
     4. Rotate back to ECI
+
+    Coefficients are stored unnormalized in _CS_COEFFS and converted to
+    fully normalized form at construction time.
     """
 
     def __init__(self, max_degree: int = 8) -> None:
         if max_degree < 2 or max_degree > 8:
             raise ValueError(f"max_degree must be 2-8, got {max_degree}")
         self._max_degree = max_degree
+        # Pre-normalize coefficients: _CS_COEFFS stores unnormalized C_nm,
+        # but _legendre computes fully normalized P̄_nm. Convert C_nm to
+        # C̄_nm = C_nm / N_nm so that P̄_nm * C̄_nm = P_nm * C_nm.
+        self._norm_coeffs: dict[tuple[int, int], tuple[float, float]] = {}
+        for (n, m), (c, s) in _CS_COEFFS.items():
+            if n <= max_degree:
+                nf = _norm_factor(n, m)
+                self._norm_coeffs[(n, m)] = (c / nf, s / nf)
 
     def _legendre(self, n_max: int, sin_lat: float) -> list[list[float]]:
         """Compute normalized associated Legendre polynomials P_nm(sin_lat).
@@ -281,13 +307,13 @@ class SphericalHarmonicGravity:
         alon = 0.0
 
         re_r = re / r
-        re_r_power = re_r * re_r  # Start at (Re/r)^2
+        re_r_power = re_r  # Start at (Re/r)^1
 
         for n in range(2, self._max_degree + 1):
-            re_r_power *= re_r  # (Re/r)^(n+1) incrementally
+            re_r_power *= re_r  # (Re/r)^n incrementally
 
             for m in range(n + 1):
-                cnm, snm = _CS_COEFFS.get((n, m), (0.0, 0.0))
+                cnm, snm = self._norm_coeffs.get((n, m), (0.0, 0.0))
 
                 cos_m_lon = math.cos(m * lon)
                 sin_m_lon = math.sin(m * lon)
@@ -417,8 +443,6 @@ class SolarRadiationPressureForce:
             if eclipse == EclipseType.UMBRA:
                 return (0.0, 0.0, 0.0)
             if eclipse == EclipseType.PENUMBRA:
-                # Forward-compatible: current is_eclipsed never returns PENUMBRA
-                # but apply 0.5 factor if it ever does
                 shadow_factor = 0.5
             else:
                 shadow_factor = 1.0

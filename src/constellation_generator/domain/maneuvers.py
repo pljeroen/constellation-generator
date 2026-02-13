@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Jeroen Michaël Visser. All rights reserved.
+# Copyright (c) 2026 Jeroen Visser. All rights reserved.
 # Licensed under the terms in LICENSE-COMMERCIAL.md.
 # Free for personal, educational, and academic use.
 # Commercial use requires a paid license — see LICENSE-COMMERCIAL.md.
@@ -347,7 +347,8 @@ def finite_burn_loss(
         _MU / orbital_velocity_ms
     )  # burn_duration * omega = burn_duration * v / r
 
-    # Cosine loss
+    # Cosine loss (clamp arc to avoid negative effective dv for very long burns)
+    alpha = min(alpha, math.pi)
     effective_dv = delta_v_ms * math.cos(alpha / 2.0)
     return effective_dv
 
@@ -392,9 +393,8 @@ def low_thrust_spiral(
     final_mass = config.initial_mass_kg * math.exp(-delta_v / exhaust_vel)
     propellant_mass = config.initial_mass_kg - final_mass
 
-    # Duration: iterative using average mass
-    avg_mass = (config.initial_mass_kg + final_mass) / 2.0
-    burn_duration = delta_v * avg_mass / config.thrust_n
+    # Exact burn duration from constant-thrust mass flow
+    burn_duration = propellant_mass * exhaust_vel / config.thrust_n
 
     # Total arc traversed (spiral, so many orbits)
     avg_r = (r1_m + r2_m) / 2.0
