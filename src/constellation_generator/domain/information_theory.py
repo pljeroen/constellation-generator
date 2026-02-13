@@ -13,6 +13,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState, propagate_ecef_to
 from constellation_generator.domain.link_budget import LinkConfig, compute_link_budget
 from constellation_generator.domain.eclipse import eclipse_fraction

@@ -14,6 +14,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 
+import numpy as np
+
 from constellation_generator.domain.observation import GroundStation, compute_observation
 from constellation_generator.domain.coordinate_frames import (
     gmst_rad,
@@ -100,26 +102,22 @@ def compute_doppler_shift(
     station_ecef = geodetic_to_ecef(station.lat_deg, station.lon_deg, station.alt_m)
 
     # Range vector (station → satellite)
-    dx = pos_ecef[0] - station_ecef[0]
-    dy = pos_ecef[1] - station_ecef[1]
-    dz = pos_ecef[2] - station_ecef[2]
+    d_vec = np.array(pos_ecef) - np.array(station_ecef)
 
-    slant_range_m = math.sqrt(dx**2 + dy**2 + dz**2)
+    slant_range_m = float(np.linalg.norm(d_vec))
     slant_range_km = slant_range_m / 1000.0
 
     if slant_range_m < 1e-10:
         return DopplerResult(shift_hz=0.0, range_rate_ms=0.0, slant_range_km=0.0)
 
     # Unit vector from station to satellite
-    ux = dx / slant_range_m
-    uy = dy / slant_range_m
-    uz = dz / slant_range_m
+    u_hat = d_vec / slant_range_m
 
     # Range rate: projection of satellite ECEF velocity onto line-of-sight
     # Note: station velocity is small (Earth rotation) but we ignore it
     # for the simplified model. The sign convention: positive range_rate
     # means increasing range (satellite moving away).
-    range_rate = vel_ecef[0] * ux + vel_ecef[1] * uy + vel_ecef[2] * uz
+    range_rate = float(np.dot(vel_ecef, u_hat))
 
     # Doppler shift: approaching = positive shift, receding = negative
     shift_hz = -freq_hz * range_rate / _C_LIGHT

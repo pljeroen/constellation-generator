@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable, Protocol, runtime_checkable
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import (
     OrbitalConstants,
     kepler_to_cartesian,
@@ -74,11 +76,12 @@ class TwoBodyGravity:
         position: tuple[float, float, float],
         velocity: tuple[float, float, float],
     ) -> tuple[float, float, float]:
-        x, y, z = position
-        r = math.sqrt(x * x + y * y + z * z)
+        pos = np.array(position)
+        r = float(np.linalg.norm(pos))
         r3 = r * r * r
         coeff = -OrbitalConstants.MU_EARTH / r3
-        return (coeff * x, coeff * y, coeff * z)
+        a = coeff * pos
+        return (float(a[0]), float(a[1]), float(a[2]))
 
 
 class J2Perturbation:
@@ -90,9 +93,9 @@ class J2Perturbation:
         position: tuple[float, float, float],
         velocity: tuple[float, float, float],
     ) -> tuple[float, float, float]:
-        x, y, z = position
-        r2 = x * x + y * y + z * z
-        r = math.sqrt(r2)
+        pos = np.array(position)
+        r2 = float(np.dot(pos, pos))
+        r = float(np.sqrt(r2))
         r5 = r2 * r2 * r
 
         mu = OrbitalConstants.MU_EARTH
@@ -100,12 +103,13 @@ class J2Perturbation:
         re = OrbitalConstants.R_EARTH_EQUATORIAL
 
         coeff = -1.5 * j2 * mu * re * re / r5
+        z = position[2]
         z2_r2 = z * z / r2
 
-        ax = coeff * x * (1.0 - 5.0 * z2_r2)
-        ay = coeff * y * (1.0 - 5.0 * z2_r2)
+        ax = coeff * pos[0] * (1.0 - 5.0 * z2_r2)
+        ay = coeff * pos[1] * (1.0 - 5.0 * z2_r2)
         az = coeff * z * (3.0 - 5.0 * z2_r2)
-        return (ax, ay, az)
+        return (float(ax), float(ay), float(az))
 
 
 class J3Perturbation:
@@ -120,9 +124,10 @@ class J3Perturbation:
         position: tuple[float, float, float],
         velocity: tuple[float, float, float],
     ) -> tuple[float, float, float]:
+        pos = np.array(position)
         x, y, z = position
-        r2 = x * x + y * y + z * z
-        r = math.sqrt(r2)
+        r2 = float(np.dot(pos, pos))
+        r = float(np.sqrt(r2))
         r7 = r2 * r2 * r2 * r
 
         mu = OrbitalConstants.MU_EARTH
@@ -136,7 +141,7 @@ class J3Perturbation:
         ax = coeff * (x / r7) * (35.0 * z3_r2 - 15.0 * z)
         ay = coeff * (y / r7) * (35.0 * z3_r2 - 15.0 * z)
         az = -coeff * (1.0 / r7) * (30.0 * z * z - 35.0 * z * z * z * z / r2 - 3.0 * r2)
-        return (ax, ay, az)
+        return (float(ax), float(ay), float(az))
 
 
 # --- EGM96/JGM-3 spherical harmonic coefficients to degree 8 ---
@@ -200,7 +205,7 @@ def _norm_factor(n: int, m: int) -> float:
     ratio = 1.0
     for k in range(n - m + 1, n + m + 1):
         ratio /= k
-    return math.sqrt((2 - delta) * (2 * n + 1) * ratio)
+    return float(np.sqrt((2 - delta) * (2 * n + 1) * ratio))
 
 
 def _gmst_rad(epoch: datetime) -> float:
@@ -244,24 +249,25 @@ class SphericalHarmonicGravity:
         Uses standard recursion (Montenbruck & Gill Eq. 3.12-3.14).
         Returns P[n][m] for n=0..n_max, m=0..n.
         """
-        cos_lat = math.sqrt(max(0.0, 1.0 - sin_lat * sin_lat))
+        cos_lat = float(np.sqrt(max(0.0, 1.0 - sin_lat * sin_lat)))
 
         p: list[list[float]] = [[0.0] * (i + 1) for i in range(n_max + 1)]
         p[0][0] = 1.0
         if n_max >= 1:
-            p[1][0] = sin_lat * math.sqrt(3.0)
-            p[1][1] = cos_lat * math.sqrt(3.0)
+            sqrt3 = float(np.sqrt(3.0))
+            p[1][0] = sin_lat * sqrt3
+            p[1][1] = cos_lat * sqrt3
 
         for n in range(2, n_max + 1):
             for m in range(n + 1):
                 if m == n:
-                    p[n][m] = cos_lat * math.sqrt((2.0 * n + 1.0) / (2.0 * n)) * p[n - 1][n - 1]
+                    p[n][m] = cos_lat * float(np.sqrt((2.0 * n + 1.0) / (2.0 * n))) * p[n - 1][n - 1]
                 elif m == n - 1:
-                    p[n][m] = sin_lat * math.sqrt(2.0 * n + 1.0) * p[n - 1][m]
+                    p[n][m] = sin_lat * float(np.sqrt(2.0 * n + 1.0)) * p[n - 1][m]
                 else:
-                    a = math.sqrt((2.0 * n + 1.0) * (2.0 * n - 1.0) / ((n - m) * (n + m)))
-                    b = math.sqrt((2.0 * n + 1.0) * (n + m - 1.0) * (n - m - 1.0)
-                                  / ((2.0 * n - 3.0) * (n - m) * (n + m)))
+                    a = float(np.sqrt((2.0 * n + 1.0) * (2.0 * n - 1.0) / ((n - m) * (n + m))))
+                    b = float(np.sqrt((2.0 * n + 1.0) * (n + m - 1.0) * (n - m - 1.0)
+                                  / ((2.0 * n - 3.0) * (n - m) * (n + m))))
                     p[n][m] = a * sin_lat * p[n - 1][m] - b * p[n - 2][m]
 
         return p
@@ -273,25 +279,27 @@ class SphericalHarmonicGravity:
         velocity: tuple[float, float, float],
     ) -> tuple[float, float, float]:
         """Compute gravitational acceleration from spherical harmonics."""
-        x_eci, y_eci, z_eci = position
-        r = math.sqrt(x_eci**2 + y_eci**2 + z_eci**2)
+        pos_eci = np.array(position)
+        r = float(np.linalg.norm(pos_eci))
         if r < 1e-3:
             return (0.0, 0.0, 0.0)
 
+        x_eci, y_eci, z_eci = position
+
         # Rotate ECI to ECEF
         gmst = _gmst_rad(epoch)
-        cos_g = math.cos(gmst)
-        sin_g = math.sin(gmst)
+        cos_g = float(np.cos(gmst))
+        sin_g = float(np.sin(gmst))
         x_ecef = cos_g * x_eci + sin_g * y_eci
         y_ecef = -sin_g * x_eci + cos_g * y_eci
         z_ecef = z_eci
 
         # Spherical coordinates
-        r_xy = math.sqrt(x_ecef**2 + y_ecef**2)
+        r_xy = float(np.sqrt(x_ecef**2 + y_ecef**2))
         sin_lat = z_ecef / r
         cos_lat = r_xy / r
         if r_xy > 1e-10:
-            lon = math.atan2(y_ecef, x_ecef)
+            lon = float(np.arctan2(y_ecef, x_ecef))
         else:
             lon = 0.0
 
@@ -315,8 +323,8 @@ class SphericalHarmonicGravity:
             for m in range(n + 1):
                 cnm, snm = self._norm_coeffs.get((n, m), (0.0, 0.0))
 
-                cos_m_lon = math.cos(m * lon)
-                sin_m_lon = math.sin(m * lon)
+                cos_m_lon = float(np.cos(m * lon))
+                sin_m_lon = float(np.sin(m * lon))
 
                 cs_term = cnm * cos_m_lon + snm * sin_m_lon
 
@@ -327,7 +335,7 @@ class SphericalHarmonicGravity:
                 # dP_nm/d(lat) = P_{n,m+1} * sqrt((n-m)*(n+m+1)) - m*tan(lat)*P_nm
                 # For m < n:
                 if m < n:
-                    dp = p[n][m + 1] * math.sqrt((n - m) * (n + m + 1.0))
+                    dp = p[n][m + 1] * float(np.sqrt((n - m) * (n + m + 1.0)))
                 else:
                     dp = 0.0
                 if cos_lat > 1e-12:
@@ -340,8 +348,8 @@ class SphericalHarmonicGravity:
                     alon += mu / (r * r) * re_r_power * m * p[n][m] * sc_term / cos_lat
 
         # Convert local to ECEF Cartesian
-        cos_lon = math.cos(lon)
-        sin_lon = math.sin(lon)
+        cos_lon = float(np.cos(lon))
+        sin_lon = float(np.sin(lon))
 
         # Unit vectors in ECEF
         # r_hat = (cos_lat*cos_lon, cos_lat*sin_lon, sin_lat)
@@ -383,7 +391,7 @@ class AtmosphericDragForce:
         vx, vy, vz = velocity
 
         # Altitude check
-        r = math.sqrt(x * x + y * y + z * z)
+        r = float(np.linalg.norm(position))
         alt_km = (r - OrbitalConstants.R_EARTH_EQUATORIAL) / 1000.0
 
         # Return zero if outside atmosphere table range
@@ -394,18 +402,17 @@ class AtmosphericDragForce:
 
         # Relative velocity (atmosphere co-rotates with Earth)
         omega_e = OrbitalConstants.EARTH_ROTATION_RATE
-        vr_x = vx + omega_e * y
-        vr_y = vy - omega_e * x
-        vr_z = vz
+        vr = np.array([vx + omega_e * y, vy - omega_e * x, vz])
 
-        v_rel = math.sqrt(vr_x * vr_x + vr_y * vr_y + vr_z * vr_z)
+        v_rel = float(np.linalg.norm(vr))
         if v_rel < 1e-10:
             return (0.0, 0.0, 0.0)
 
         bc = self._config.ballistic_coefficient
         coeff = -0.5 * rho * bc * v_rel
 
-        return (coeff * vr_x, coeff * vr_y, coeff * vr_z)
+        a = coeff * vr
+        return (float(a[0]), float(a[1]), float(a[2]))
 
 
 class SolarRadiationPressureForce:
@@ -450,11 +457,9 @@ class SolarRadiationPressureForce:
             shadow_factor = 1.0
 
         # d = r_sat - r_sun (from Sun toward satellite)
-        dx = position[0] - sx
-        dy = position[1] - sy
-        dz = position[2] - sz
+        d = np.array(position) - np.array([sx, sy, sz])
 
-        d_mag = math.sqrt(dx * dx + dy * dy + dz * dz)
+        d_mag = float(np.linalg.norm(d))
         if d_mag < 1e-10:
             return (0.0, 0.0, 0.0)
 
@@ -462,7 +467,8 @@ class SolarRadiationPressureForce:
         au_ratio_sq = (AU_METERS / d_mag) ** 2
         coeff = self._P_SR * self._cr * am_ratio * au_ratio_sq / d_mag * shadow_factor
 
-        return (coeff * dx, coeff * dy, coeff * dz)
+        a = coeff * d
+        return (float(a[0]), float(a[1]), float(a[2]))
 
 
 # --- RK4 integrator ---
@@ -484,21 +490,20 @@ def rk4_step(
     Returns:
         (t_new, state_new)
     """
-    k1 = deriv_fn(t_s, state)
-    s1 = tuple(s + 0.5 * h * k for s, k in zip(state, k1))
+    sv = np.array(state)
+    k1 = np.array(deriv_fn(t_s, state))
+    s1 = tuple((sv + 0.5 * h * k1).tolist())
 
-    k2 = deriv_fn(t_s + 0.5 * h, s1)
-    s2 = tuple(s + 0.5 * h * k for s, k in zip(state, k2))
+    k2 = np.array(deriv_fn(t_s + 0.5 * h, s1))
+    s2 = tuple((sv + 0.5 * h * k2).tolist())
 
-    k3 = deriv_fn(t_s + 0.5 * h, s2)
-    s3 = tuple(s + h * k for s, k in zip(state, k3))
+    k3 = np.array(deriv_fn(t_s + 0.5 * h, s2))
+    s3 = tuple((sv + h * k3).tolist())
 
-    k4 = deriv_fn(t_s + h, s3)
+    k4 = np.array(deriv_fn(t_s + h, s3))
 
-    state_new = tuple(
-        s + (h / 6.0) * (a + 2.0 * b + 2.0 * c + d)
-        for s, a, b, c, d in zip(state, k1, k2, k3, k4)
-    )
+    state_new_arr = sv + (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+    state_new = tuple(float(x) for x in state_new_arr)
     return (t_s + h, state_new)
 
 
@@ -521,27 +526,27 @@ def stormer_verlet_step(
     Returns:
         (t_new, state_new)
     """
+    pos_arr = np.array([state[0], state[1], state[2]])
+    vel_arr = np.array([state[3], state[4], state[5]])
+
     pos = (state[0], state[1], state[2])
     vel = (state[3], state[4], state[5])
 
     # Half-step velocity
-    acc = accel_fn(t_s, pos, vel)
-    v_half = (vel[0] + 0.5 * h * acc[0],
-              vel[1] + 0.5 * h * acc[1],
-              vel[2] + 0.5 * h * acc[2])
+    acc = np.array(accel_fn(t_s, pos, vel))
+    v_half_arr = vel_arr + 0.5 * h * acc
+    v_half = (float(v_half_arr[0]), float(v_half_arr[1]), float(v_half_arr[2]))
 
     # Full-step position
-    pos_new = (pos[0] + h * v_half[0],
-               pos[1] + h * v_half[1],
-               pos[2] + h * v_half[2])
+    pos_new_arr = pos_arr + h * v_half_arr
+    pos_new = (float(pos_new_arr[0]), float(pos_new_arr[1]), float(pos_new_arr[2]))
 
     # Acceleration at new position
-    acc_new = accel_fn(t_s + h, pos_new, v_half)
+    acc_new = np.array(accel_fn(t_s + h, pos_new, v_half))
 
     # Complete velocity step
-    vel_new = (v_half[0] + 0.5 * h * acc_new[0],
-               v_half[1] + 0.5 * h * acc_new[1],
-               v_half[2] + 0.5 * h * acc_new[2])
+    vel_new_arr = v_half_arr + 0.5 * h * acc_new
+    vel_new = (float(vel_new_arr[0]), float(vel_new_arr[1]), float(vel_new_arr[2]))
 
     return (t_s + h, pos_new + vel_new)
 

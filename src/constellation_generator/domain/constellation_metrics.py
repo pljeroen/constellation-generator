@@ -14,6 +14,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
 from constellation_generator.domain.propagation import OrbitalState, propagate_to
 from constellation_generator.domain.coverage import CoveragePoint, compute_coverage_snapshot
@@ -126,26 +128,26 @@ def compute_coverage_statistics(
             std_visible=0.0, percent_covered=0.0, n_fold_coverage={},
         )
 
-    counts = [p.visible_count for p in grid]
+    counts_list = [p.visible_count for p in grid]
+    counts = np.array(counts_list)
     n = len(counts)
 
-    mean_v = sum(counts) / n
-    max_v = max(counts)
-    min_v = min(counts)
+    mean_v = float(np.mean(counts))
+    max_v = int(np.max(counts))
+    min_v = int(np.min(counts))
 
     # Population standard deviation
-    variance = sum((c - mean_v)**2 for c in counts) / n
-    std_v = math.sqrt(variance)
+    std_v = float(np.std(counts))
 
     # Percent of grid with at least 1 visible
-    covered = sum(1 for c in counts if c > 0)
+    covered = int(np.sum(counts > 0))
     pct_covered = 100.0 * covered / n
 
     # N-fold coverage
     n_fold: dict[int, float] = {}
     if n_fold_levels:
         for level in n_fold_levels:
-            above = sum(1 for c in counts if c >= level)
+            above = int(np.sum(counts >= level))
             n_fold[level] = 100.0 * above / n
 
     return CoverageStatistics(
@@ -585,8 +587,8 @@ def compute_deployment_phasing(
         raise ValueError(f"orbit_radius_m must be positive, got {orbit_radius_m}")
 
     total_sats = num_planes * sats_per_plane
-    T = 2.0 * math.pi * math.sqrt(orbit_radius_m**3 / _MU)
-    v_circ = math.sqrt(_MU / orbit_radius_m)
+    T = 2.0 * np.pi * float(np.sqrt(orbit_radius_m**3 / _MU))
+    v_circ = float(np.sqrt(_MU / orbit_radius_m))
 
     per_sat: list[tuple[int, float, float]] = []
     total_dv = 0.0
@@ -597,7 +599,7 @@ def compute_deployment_phasing(
             sat_idx = plane * sats_per_plane + slot
 
             # In-plane phase angle offset
-            phase_offset_rad = 2.0 * math.pi * slot / sats_per_plane
+            phase_offset_rad = 2.0 * np.pi * slot / sats_per_plane
 
             if plane == 0 and slot == 0:
                 # Reference satellite: no maneuver needed
@@ -608,10 +610,10 @@ def compute_deployment_phasing(
             # Use multi-orbit phasing to keep altitude change modest
             if phase_offset_rad > 0 and slot > 0:
                 # Choose enough phasing orbits so period change < 25%
-                n_phase_orbits = max(1, int(math.ceil(phase_offset_rad / (0.5 * math.pi))))
-                T_phase = T * (1.0 - phase_offset_rad / (2.0 * math.pi * n_phase_orbits))
-                a_phase = (_MU * (T_phase / (2.0 * math.pi))**2)**(1.0 / 3.0)
-                v_phase = math.sqrt(_MU * (2.0 / orbit_radius_m - 1.0 / a_phase))
+                n_phase_orbits = max(1, int(np.ceil(phase_offset_rad / (0.5 * np.pi))))
+                T_phase = T * (1.0 - phase_offset_rad / (2.0 * np.pi * n_phase_orbits))
+                a_phase = (_MU * (T_phase / (2.0 * np.pi))**2)**(1.0 / 3.0)
+                v_phase = float(np.sqrt(_MU * (2.0 / orbit_radius_m - 1.0 / a_phase)))
                 dv_in_plane = 2.0 * abs(v_phase - v_circ)
                 t_in_plane = T_phase * n_phase_orbits
             else:
@@ -621,19 +623,19 @@ def compute_deployment_phasing(
             # Inter-plane RAAN drift via altitude offset
             # RAAN separation per plane
             if num_planes > 1 and plane > 0:
-                raan_offset_rad = 2.0 * math.pi * plane / num_planes
+                raan_offset_rad = 2.0 * np.pi * plane / num_planes
                 # Time to drift RAAN by differential altitude
                 # Simplified: ~30 km altitude offset gives ~0.05 deg/day RAAN drift
                 # For larger offsets, proportional
                 drift_rate_deg_day = 0.05  # per 30 km offset
-                raan_offset_deg = math.degrees(raan_offset_rad)
+                raan_offset_deg = float(np.degrees(raan_offset_rad))
                 t_drift_days = raan_offset_deg / drift_rate_deg_day
                 t_drift_s = t_drift_days * 86400.0
 
                 # Delta-V to raise/lower altitude by 30 km and return
                 delta_alt = 30_000.0  # 30 km in meters
                 r_drift = orbit_radius_m + delta_alt
-                v_drift = math.sqrt(_MU * (2.0 / orbit_radius_m - 1.0 / ((orbit_radius_m + r_drift) / 2.0)))
+                v_drift = float(np.sqrt(_MU * (2.0 / orbit_radius_m - 1.0 / ((orbit_radius_m + r_drift) / 2.0))))
                 dv_plane = 2.0 * abs(v_drift - v_circ)
             else:
                 dv_plane = 0.0

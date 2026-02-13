@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
 from constellation_generator.domain.coordinate_frames import (
     gmst_rad,
@@ -170,18 +172,18 @@ def is_in_sensor_fov(
     # Convert satellite to ECEF
     sat_ecef, _ = eci_to_ecef(sat_position_eci, (0.0, 0.0, 0.0), gmst_angle_rad)
 
-    sx, sy, sz = sat_ecef
-    sat_mag = math.sqrt(sx * sx + sy * sy + sz * sz)
+    sat_vec = np.array(sat_ecef)
+    sat_mag = float(np.linalg.norm(sat_vec))
 
     # Earth obscuration check: ground point must be visible from satellite
     # (satellite must be above horizon at the ground point).
     # Condition: cos(angle between ground and sat vectors) > R_e / sat_mag
-    gx, gy, gz = ground_point_ecef
-    ground_mag = math.sqrt(gx * gx + gy * gy + gz * gz)
+    ground_vec = np.array(ground_point_ecef)
+    ground_mag = float(np.linalg.norm(ground_vec))
     if ground_mag < 1e-10 or sat_mag < 1e-10:
         return SensorAccessResult(is_visible=False, off_nadir_angle_deg=180.0, ground_range_km=0.0)
 
-    dot_gs = gx * sx + gy * sy + gz * sz
+    dot_gs = float(np.dot(ground_vec, sat_vec))
     cos_angle_gs = dot_gs / (ground_mag * sat_mag)
     r_earth_m = OrbitalConstants.R_EARTH
     horizon_cos = r_earth_m / sat_mag
@@ -189,13 +191,11 @@ def is_in_sensor_fov(
     if cos_angle_gs < horizon_cos:
         # Ground point not visible (behind Earth horizon)
         # Compute approximate off-nadir for reporting
-        nadir_x = -sx / sat_mag
-        nadir_y = -sy / sat_mag
-        nadir_z = -sz / sat_mag
-        to_g_x, to_g_y, to_g_z = gx - sx, gy - sy, gz - sz
-        to_g_mag = math.sqrt(to_g_x ** 2 + to_g_y ** 2 + to_g_z ** 2)
+        nadir = -sat_vec / sat_mag
+        to_g = ground_vec - sat_vec
+        to_g_mag = float(np.linalg.norm(to_g))
         if to_g_mag > 1e-10:
-            cos_on = (to_g_x * nadir_x + to_g_y * nadir_y + to_g_z * nadir_z) / to_g_mag
+            cos_on = float(np.dot(to_g, nadir)) / to_g_mag
             cos_on = max(-1.0, min(1.0, cos_on))
             off_nadir_deg = math.degrees(math.acos(cos_on))
         else:
@@ -204,25 +204,17 @@ def is_in_sensor_fov(
         return SensorAccessResult(is_visible=False, off_nadir_angle_deg=off_nadir_deg, ground_range_km=ground_range_km)
 
     # Nadir direction (toward Earth center)
-    nadir_x = -sx / sat_mag
-    nadir_y = -sy / sat_mag
-    nadir_z = -sz / sat_mag
+    nadir = -sat_vec / sat_mag
 
     # Vector from satellite to ground point
-    to_ground_x = gx - sx
-    to_ground_y = gy - sy
-    to_ground_z = gz - sz
+    to_ground = ground_vec - sat_vec
 
-    to_ground_mag = math.sqrt(
-        to_ground_x * to_ground_x + to_ground_y * to_ground_y + to_ground_z * to_ground_z
-    )
+    to_ground_mag = float(np.linalg.norm(to_ground))
     if to_ground_mag < 1e-10:
         return SensorAccessResult(is_visible=True, off_nadir_angle_deg=0.0, ground_range_km=0.0)
 
     # Off-nadir angle
-    cos_off_nadir = (
-        to_ground_x * nadir_x + to_ground_y * nadir_y + to_ground_z * nadir_z
-    ) / to_ground_mag
+    cos_off_nadir = float(np.dot(to_ground, nadir)) / to_ground_mag
     cos_off_nadir = max(-1.0, min(1.0, cos_off_nadir))
     off_nadir_rad = math.acos(cos_off_nadir)
     off_nadir_deg = math.degrees(off_nadir_rad)

@@ -15,6 +15,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState, propagate_to, propagate_ecef_to
 from constellation_generator.domain.sensor import SensorConfig, compute_sensor_coverage
 from constellation_generator.domain.dilution_of_precision import DOPResult, compute_dop
@@ -352,7 +354,7 @@ def compute_optimal_eo_ltan(
     ra_sun = sun.right_ascension_rad
 
     a = _R_EARTH + altitude_km * 1000.0
-    n = math.sqrt(_MU / a**3)
+    n = float(np.sqrt(_MU / a**3))
     inc_rad = math.radians(97.4)  # typical SSO inclination
 
     eo_points: list[EOLTANPoint] = []

@@ -14,6 +14,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState, propagate_to
 from constellation_generator.domain.eclipse import (
     compute_beta_angle,
@@ -148,7 +150,7 @@ def compute_seasonal_thermal_profile(
     Returns:
         SeasonalThermalProfile with monthly thermal data.
     """
-    T_orbit = 2.0 * math.pi / state.mean_motion_rad_s
+    T_orbit = 2.0 * np.pi / state.mean_motion_rad_s
     orbits_per_day = 86400.0 / T_orbit
 
     months: list[ThermalMonth] = []
@@ -297,13 +299,13 @@ def compute_radiation_optimized_ltan(
     ra_sun = sun.right_ascension_rad
 
     a = _R_EARTH + altitude_km * 1000.0
-    n = math.sqrt(_MU / a**3)
-    inc_rad = math.radians(97.4)
+    n = float(np.sqrt(_MU / a**3))
+    inc_rad = float(np.radians(97.4))
 
     points: list[RadiationLTANPoint] = []
 
     for ltan in ltan_values:
-        raan = ra_sun + math.radians((ltan - 12.0) * 15.0)
+        raan = ra_sun + float(np.radians((ltan - 12.0) * 15.0))
         state = OrbitalState(
             semi_major_axis_m=a, eccentricity=0.0,
             inclination_rad=inc_rad, raan_rad=raan,
@@ -355,12 +357,12 @@ def compute_eclipse_free_windows(
     ra_sun = sun.right_ascension_rad
 
     a = _R_EARTH + altitude_km * 1000.0
-    inc_rad = math.radians(97.4)
+    inc_rad = float(np.radians(97.4))
 
     points: list[EclipseFreeLTANPoint] = []
 
     for ltan in ltan_values:
-        raan = ra_sun + math.radians((ltan - 12.0) * 15.0)
+        raan = ra_sun + float(np.radians((ltan - 12.0) * 15.0))
 
         seasons = predict_eclipse_seasons(
             raan, inc_rad, epoch, 365.0, step_days=1.0,

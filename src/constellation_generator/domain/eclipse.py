@@ -16,6 +16,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Callable
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
 from constellation_generator.domain.solar import sun_position_eci
 from constellation_generator.domain.propagation import OrbitalState, propagate_to
@@ -67,36 +69,30 @@ def is_eclipsed(
     """
     r_earth = earth_radius_m if earth_radius_m is not None else _R_EARTH
 
-    sx, sy, sz = sat_position_eci
-    ux, uy, uz = sun_position_eci_m
+    sat = np.array(sat_position_eci)
+    sun = np.array(sun_position_eci_m)
 
     # Vector from satellite to Sun
-    to_sun_x = ux - sx
-    to_sun_y = uy - sy
-    to_sun_z = uz - sz
+    to_sun = sun - sat
 
     # If dot(sat_pos, to_sun) > 0, satellite is on the sunlit side
-    dot_sat_sun = sx * to_sun_x + sy * to_sun_y + sz * to_sun_z
+    dot_sat_sun = float(np.dot(sat, to_sun))
     if dot_sat_sun > 0:
         return EclipseType.NONE
 
     # Satellite is behind Earth relative to Sun.
-    sun_dist = math.sqrt(ux**2 + uy**2 + uz**2)
+    sun_dist = float(np.linalg.norm(sun))
     if sun_dist == 0:
         return EclipseType.NONE
 
-    sun_hat_x = ux / sun_dist
-    sun_hat_y = uy / sun_dist
-    sun_hat_z = uz / sun_dist
+    sun_hat = sun / sun_dist
 
     # Projection of satellite onto Sun direction (negative = behind Earth)
-    proj = sx * sun_hat_x + sy * sun_hat_y + sz * sun_hat_z
+    proj = float(np.dot(sat, sun_hat))
 
     # Perpendicular distance from Earth-Sun line
-    perp_x = sx - proj * sun_hat_x
-    perp_y = sy - proj * sun_hat_y
-    perp_z = sz - proj * sun_hat_z
-    perp_dist = math.sqrt(perp_x**2 + perp_y**2 + perp_z**2)
+    perp = sat - proj * sun_hat
+    perp_dist = float(np.linalg.norm(perp))
 
     # Distance from Earth center along shadow axis (positive = behind Earth)
     d_along = -proj
@@ -140,12 +136,12 @@ def compute_beta_angle(
     dec_sun = sun.declination_rad
 
     sin_beta = (
-        math.cos(dec_sun) * math.sin(raan_rad - ra_sun) * math.sin(inclination_rad)
-        + math.sin(dec_sun) * math.cos(inclination_rad)
+        float(np.cos(dec_sun)) * float(np.sin(raan_rad - ra_sun)) * float(np.sin(inclination_rad))
+        + float(np.sin(dec_sun)) * float(np.cos(inclination_rad))
     )
     # Clamp for numerical safety
     sin_beta = max(-1.0, min(1.0, sin_beta))
-    return math.degrees(math.asin(sin_beta))
+    return float(np.degrees(np.arcsin(sin_beta)))
 
 
 def _bisect_event(

@@ -14,6 +14,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import (
     OrbitalConstants,
     sso_inclination_deg,
@@ -79,7 +81,7 @@ def design_sso_orbit(
     """
     inc_deg = sso_inclination_deg(altitude_km)
     sun = sun_position_eci(epoch)
-    sun_ra_deg = math.degrees(sun.right_ascension_rad)
+    sun_ra_deg = float(np.degrees(sun.right_ascension_rad))
     raan_deg = (sun_ra_deg + (ltan_hours - 12.0) * 15.0) % 360.0
 
     return SSODesign(
@@ -108,10 +110,10 @@ def design_frozen_orbit(
         FrozenOrbitDesign with balanced eccentricity.
     """
     a = _R_E + altitude_km * 1000.0
-    i_rad = math.radians(inclination_deg)
+    i_rad = float(np.radians(inclination_deg))
 
     # Frozen eccentricity: e = -(J3 * R_E) / (2 * J2 * a) * sin(i)
-    e_frozen = -(_J3 * _R_E) / (2.0 * _J2 * a) * math.sin(i_rad)
+    e_frozen = -(_J3 * _R_E) / (2.0 * _J2 * a) * float(np.sin(i_rad))
 
     # Choose arg_perigee based on sign convention
     if e_frozen >= 0:
@@ -158,11 +160,11 @@ def design_repeat_ground_track(
     if repeat_revolutions <= 0:
         raise ValueError(f"repeat_revolutions must be positive, got {repeat_revolutions}")
 
-    i_rad = math.radians(inclination_deg)
+    i_rad = float(np.radians(inclination_deg))
     target_period = _SIDEREAL_DAY_S * repeat_days / repeat_revolutions
 
     # Initial guess from Kepler's 3rd law (no J2)
-    a_kepler = (_MU * (target_period / (2.0 * math.pi))**2)**(1.0 / 3.0)
+    a_kepler = (_MU * (target_period / (2.0 * np.pi))**2)**(1.0 / 3.0)
 
     # Bisection to find J2-corrected SMA
     a_lo = a_kepler * 0.99
@@ -198,8 +200,8 @@ def _nodal_period(a: float, i_rad: float) -> float:
     T_nodal = 2*pi/n * (1 - 3/2 * J2 * (R_E/a)^2 * (3 - 4*sin^2(i)) / (1 - e^2)^2)
     For circular orbits (e=0).
     """
-    n = math.sqrt(_MU / a**3)
-    T_kepler = 2.0 * math.pi / n
+    n = float(np.sqrt(_MU / a**3))
+    T_kepler = 2.0 * np.pi / n
     p_ratio = (_R_E / a)**2
-    correction = 1.0 - 1.5 * _J2 * p_ratio * (3.0 - 4.0 * math.sin(i_rad)**2)
+    correction = 1.0 - 1.5 * _J2 * p_ratio * (3.0 - 4.0 * float(np.sin(i_rad))**2)
     return T_kepler * correction

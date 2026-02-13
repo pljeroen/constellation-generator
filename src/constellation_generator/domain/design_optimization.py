@@ -13,6 +13,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState, propagate_ecef_to
 from constellation_generator.domain.atmosphere import DragConfig
 from constellation_generator.domain.dilution_of_precision import compute_dop
@@ -165,7 +167,7 @@ def compute_coverage_drift(
     # Coverage drift rate: proportional to differential RAAN drift
     # One radian of RAAN shift ≈ 1/N_planes of coverage cell width
     n_planes = max(1, len(set(s.raan_rad for s in states)))
-    coverage_sensitivity = 1.0 / (2.0 * math.pi / n_planes)
+    coverage_sensitivity = 1.0 / (2.0 * np.pi / n_planes)
     coverage_drift = abs(d_raan_rate) * coverage_sensitivity
 
     # Half-life: time until coverage degrades by threshold fraction
@@ -231,7 +233,7 @@ def compute_mass_efficiency_frontier(
         exponent = dv_total / (isp_s * g0)
         if exponent > 20.0:
             exponent = 20.0  # Cap to prevent overflow
-        wet_mass = dry_mass_kg * math.exp(exponent)
+        wet_mass = dry_mass_kg * float(np.exp(exponent))
         constellation_mass = wet_mass * num_sats
 
         # Efficiency = inverse of total mass (higher = better)

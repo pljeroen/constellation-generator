@@ -16,6 +16,8 @@ import math
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
 from constellation_generator.domain.time_systems import AstroTime
 
 # --------------------------------------------------------------------------- #

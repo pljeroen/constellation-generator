@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
 from constellation_generator.domain.coordinate_frames import (
     gmst_rad,
@@ -208,7 +210,7 @@ class NRLMSISE00Model:
             temperature = 200.0 + frac * (t120 - 200.0)
             temperature = max(180.0, temperature)
         else:
-            temperature = t_inf - (t_inf - t120) * math.exp(-s * (z - 120.0))
+            temperature = t_inf - (t_inf - t120) * float(np.exp(-s * (z - 120.0)))
 
         # --- Local solar time ---
         lst_hours = (ut_seconds / 3600.0) + (longitude_deg / 15.0)
@@ -217,18 +219,18 @@ class NRLMSISE00Model:
         # --- Diurnal variation factor ---
         # Peak at ~14h LST (2 PM), minimum at ~4h LST
         hour_angle = 2.0 * math.pi * (lst_hours - 14.0) / 24.0
-        diurnal_factor = 1.0 + 0.35 * math.cos(hour_angle)
+        diurnal_factor = 1.0 + 0.35 * float(np.cos(hour_angle))
 
         # --- Latitude factor ---
         # Slight bulge at equator due to solar heating
-        lat_rad = math.radians(latitude_deg)
-        latitude_factor = 1.0 - 0.08 * abs(math.sin(lat_rad))
+        lat_rad = float(np.radians(latitude_deg))
+        latitude_factor = 1.0 - 0.08 * abs(float(np.sin(lat_rad)))
 
         # --- Seasonal/annual variation ---
         # Approximate: higher density in summer hemisphere at solstices
         # Day 172 ~ June 21, day 355 ~ Dec 21
         annual_phase = 2.0 * math.pi * (day_of_year - 172.0) / 365.25
-        seasonal_factor = 1.0 + 0.05 * math.cos(annual_phase) * math.sin(lat_rad)
+        seasonal_factor = 1.0 + 0.05 * float(np.cos(annual_phase)) * float(np.sin(lat_rad))
 
         # --- Magnetic activity factor ---
         # Stronger effect at higher altitudes
@@ -252,7 +254,7 @@ class NRLMSISE00Model:
             )
             # Scale exponentially down from 120 km using a mean scale height
             mean_scale_height = 8.0 + 0.1 * (z - 80.0)  # km, ~8 km at 80km
-            scale = math.exp(-(120.0 - z) / mean_scale_height)
+            scale = float(np.exp(-(120.0 - z) / mean_scale_height))
             densities = tuple(d * scale for d in densities_120)
 
         n_n2, n_o2, n_o, n_he, n_ar, n_h, n_n = densities
@@ -356,7 +358,7 @@ class NRLMSISE00Model:
 
             # Diffusive equilibrium with thermal diffusion
             temp_ratio = t120 / temperature if temperature > 1.0 else 1.0
-            density = n120 * temp_ratio ** (1.0 + alpha) * math.exp(-dz / h_km)
+            density = n120 * temp_ratio ** (1.0 + alpha) * float(np.exp(-dz / h_km))
             return density * atm_factor
 
         n_n2 = _species_density(n120_n2, _AMU_N2, _ALPHA_N2)
@@ -509,7 +511,7 @@ class NRLMSISE00DragForce:
         vx, vy, vz = velocity
 
         # Position magnitude and altitude
-        r = math.sqrt(x * x + y * y + z * z)
+        r = float(np.linalg.norm(position))
         alt_km = (r - OrbitalConstants.R_EARTH_EQUATORIAL) / 1000.0
 
         if alt_km < 0.0:
@@ -548,15 +550,14 @@ class NRLMSISE00DragForce:
 
         # Relative velocity (atmosphere co-rotates with Earth)
         omega_e = OrbitalConstants.EARTH_ROTATION_RATE
-        vr_x = vx + omega_e * y
-        vr_y = vy - omega_e * x
-        vr_z = vz
+        vr = np.array([vx + omega_e * y, vy - omega_e * x, vz])
 
-        v_rel = math.sqrt(vr_x * vr_x + vr_y * vr_y + vr_z * vr_z)
+        v_rel = float(np.linalg.norm(vr))
         if v_rel < 1e-10:
             return (0.0, 0.0, 0.0)
 
         # Drag acceleration: a = -0.5 * rho * Cd * (A/m) * v_rel * v_hat
         coeff = -0.5 * rho * self._bc * v_rel
 
-        return (coeff * vr_x, coeff * vr_y, coeff * vr_z)
+        a = coeff * vr
+        return (float(a[0]), float(a[1]), float(a[2]))

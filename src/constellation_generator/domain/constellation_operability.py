@@ -14,6 +14,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState
 from constellation_generator.domain.link_budget import LinkConfig
 from constellation_generator.domain.atmosphere import DragConfig
@@ -97,13 +99,13 @@ def compute_operability_index(
     # Controllability factor
     if states:
         alt_m = states[0].semi_major_axis_m
-        n_rad_s = math.sqrt(OrbitalConstants.MU_EARTH / alt_m ** 3)
+        n_rad_s = float(np.sqrt(OrbitalConstants.MU_EARTH / alt_m ** 3))
     else:
         n_rad_s = 0.001
     ctrl = compute_cw_controllability(n_rad_s, control_duration_s)
     kappa = ctrl.condition_number
-    if kappa > math.e:
-        controllability = 1.0 / math.log(kappa)
+    if kappa > np.e:
+        controllability = 1.0 / float(np.log(kappa))
     else:
         controllability = 1.0
 

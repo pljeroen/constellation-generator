@@ -13,6 +13,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState
 from constellation_generator.domain.atmosphere import DragConfig
 from constellation_generator.domain.lifetime import OrbitLifetimeResult, compute_orbit_lifetime
@@ -81,8 +83,8 @@ def compute_analytical_collision_probability(
 
     General case uses series expansion with modified Bessel I_0.
     """
-    d = math.sqrt(b_radial_m ** 2 + b_cross_m ** 2)
-    sigma_avg = math.sqrt((sigma_radial_m ** 2 + sigma_cross_m ** 2) / 2.0)
+    d = float(np.sqrt(b_radial_m ** 2 + b_cross_m ** 2))
+    sigma_avg = float(np.sqrt((sigma_radial_m ** 2 + sigma_cross_m ** 2) / 2.0))
 
     if sigma_avg < 1e-15:
         pc = 1.0 if d < combined_radius_m else 0.0
@@ -102,7 +104,7 @@ def compute_analytical_collision_probability(
 
     if d < 1e-10:
         # Centered: P_c = 1 - exp(-r^2/(2*sigma_avg^2))
-        pc_analytical = 1.0 - math.exp(-(r ** 2) / (2.0 * sigma_avg ** 2))
+        pc_analytical = 1.0 - float(np.exp(-(r ** 2) / (2.0 * sigma_avg ** 2)))
     else:
         # Non-centered approximation:
         # P_c ≈ (r^2 / (2*sigma_r*sigma_c)) * exp(-d^2/(2*sigma_avg^2))
@@ -115,7 +117,7 @@ def compute_analytical_collision_probability(
         if exponent < -700:
             pc_analytical = 0.0
         else:
-            pc_analytical = (r ** 2 / (2.0 * sigma_product)) * math.exp(exponent)
+            pc_analytical = (r ** 2 / (2.0 * sigma_product)) * float(np.exp(exponent))
 
     pc_analytical = max(0.0, min(1.0, pc_analytical))
 
@@ -259,7 +261,7 @@ def compute_mission_availability(
         power_avail.append(p_power)
 
         # Conjunction survival (Poisson)
-        p_conj = math.exp(-conjunction_rate_per_year * t_years)
+        p_conj = float(np.exp(-conjunction_rate_per_year * t_years))
         conj_surv.append(p_conj)
 
         # Total
@@ -297,14 +299,20 @@ def _pearson_correlation(x: list, y: list) -> float:
     if n < 2:
         return 0.0
 
-    mean_x = sum(x) / n
-    mean_y = sum(y) / n
+    x_arr = np.array(x, dtype=np.float64)
+    y_arr = np.array(y, dtype=np.float64)
 
-    cov = sum((x[i] - mean_x) * (y[i] - mean_y) for i in range(n))
-    var_x = sum((x[i] - mean_x) ** 2 for i in range(n))
-    var_y = sum((y[i] - mean_y) ** 2 for i in range(n))
+    mean_x = np.mean(x_arr)
+    mean_y = np.mean(y_arr)
 
-    denom = math.sqrt(max(0.0, var_x * var_y))
+    dx = x_arr - mean_x
+    dy = y_arr - mean_y
+
+    cov = float(np.dot(dx, dy))
+    var_x = float(np.dot(dx, dx))
+    var_y = float(np.dot(dy, dy))
+
+    denom = float(np.sqrt(max(0.0, var_x * var_y)))
     if denom < 1e-15:
         return 0.0
     return cov / denom
@@ -334,7 +342,7 @@ def compute_radiation_eclipse_correlation(
         eclipse_fracs.append(eps)
 
         beta = compute_beta_angle(state.raan_rad, state.inclination_rad, t)
-        beta_angles.append(math.degrees(beta))
+        beta_angles.append(float(np.degrees(beta)))
 
     dose_eclipse_corr = _pearson_correlation(doses, eclipse_fracs)
     dose_beta_corr = _pearson_correlation(doses, beta_angles)

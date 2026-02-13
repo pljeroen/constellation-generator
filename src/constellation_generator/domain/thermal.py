@@ -13,6 +13,8 @@ No external dependencies — only stdlib math/dataclasses.
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 
 _SOLAR_FLUX_1AU = 1361.0          # W/m² — solar constant at 1 AU
 _EARTH_ALBEDO = 0.3               # Earth average albedo fraction

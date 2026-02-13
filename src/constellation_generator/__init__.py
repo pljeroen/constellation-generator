@@ -484,6 +484,7 @@ from constellation_generator.domain.adaptive_integration import (
 )
 from constellation_generator.domain.precession_nutation import (
     fundamental_arguments,
+    planetary_arguments,
     precession_matrix,
     nutation_angles,
     nutation_matrix,
@@ -535,7 +536,7 @@ from constellation_generator.domain.design_sensitivity import (
     compute_altitude_sensitivity,
 )
 
-__version__ = "1.20.0"
+__version__ = "1.21.0"
 
 __all__ = [
     "OrbitalConstants",
@@ -932,6 +933,7 @@ __all__ = [
     "AdaptiveStepResult",
     # precession_nutation
     "fundamental_arguments",
+    "planetary_arguments",
     "precession_matrix",
     "nutation_angles",
     "nutation_matrix",

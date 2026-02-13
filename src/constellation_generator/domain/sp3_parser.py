@@ -19,6 +19,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import numpy as np
+
 
 @dataclass(frozen=True)
 class SP3EphemerisPoint:

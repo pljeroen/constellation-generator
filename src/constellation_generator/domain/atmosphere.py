@@ -14,6 +14,8 @@ import math
 from dataclasses import dataclass
 from enum import Enum
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
 
 
@@ -137,7 +139,7 @@ def atmospheric_density(
             hi = mid
 
     h_base, rho_base, scale_height = table[lo]
-    return rho_base * math.exp(-(altitude_km - h_base) / scale_height)
+    return float(rho_base * np.exp(-(altitude_km - h_base) / scale_height))
 
 
 def drag_acceleration(density: float, velocity: float, drag_config: DragConfig) -> float:
@@ -178,6 +180,6 @@ def semi_major_axis_decay_rate(
         da/dt in m/s (negative — orbit decays).
     """
     h_km = (a - OrbitalConstants.R_EARTH) / 1000.0
-    v = math.sqrt(OrbitalConstants.MU_EARTH / a)
+    v = float(np.sqrt(OrbitalConstants.MU_EARTH / a))
     rho = atmospheric_density(h_km, model=model)
     return -rho * v * drag_config.ballistic_coefficient * a

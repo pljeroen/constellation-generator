@@ -14,6 +14,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
+
 from constellation_generator.domain.lifetime import DecayPoint
 from constellation_generator.domain.atmosphere import DragConfig
 from constellation_generator.domain.station_keeping import (
@@ -197,7 +199,7 @@ def compute_health_timeline(
 
     # Get eclipse fraction for thermal cycles
     ecl_frac = eclipse_fraction(state, epoch, num_points=72)
-    T_orbit = 2.0 * math.pi / state.mean_motion_rad_s
+    T_orbit = 2.0 * np.pi / state.mean_motion_rad_s
     cycles_per_day = 86400.0 / T_orbit
 
     # Station-keeping propellant rate

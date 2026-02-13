@@ -14,6 +14,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState
 from constellation_generator.domain.graph_analysis import compute_topology_resilience
 from constellation_generator.domain.control_analysis import compute_cw_controllability
@@ -209,7 +211,7 @@ def _compute_metrics_at_altitude(
 ) -> dict:
     """Compute a set of metrics at a given altitude for sensitivity analysis."""
     a = _R_EARTH + alt_km * 1000.0
-    n = math.sqrt(_MU / a ** 3)
+    n = float(np.sqrt(_MU / a ** 3))
 
     # RAAN drift rate
     raan_rate = abs(j2_raan_rate(n, a, eccentricity, inclination_rad))
@@ -229,7 +231,7 @@ def _compute_metrics_at_altitude(
 
     # Thermal cycling (eclipse-driven)
     ecl_frac = eclipse_fraction(temp_state, epoch, num_points=36)
-    t_orbit = 2.0 * math.pi / n
+    t_orbit = 2.0 * np.pi / n
     cycles_per_day = 86400.0 / t_orbit * ecl_frac
 
     # Fiedler value

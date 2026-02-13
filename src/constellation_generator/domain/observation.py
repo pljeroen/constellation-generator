@@ -11,6 +11,8 @@ No external dependencies — only stdlib math/dataclasses.
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 from constellation_generator.domain.coordinate_frames import geodetic_to_ecef
 
 
@@ -48,16 +50,19 @@ def _ecef_to_enu(
         (E, N, U) components in meters.
     """
     dx, dy, dz = range_ecef
-    sin_lat = math.sin(lat_rad)
-    cos_lat = math.cos(lat_rad)
-    sin_lon = math.sin(lon_rad)
-    cos_lon = math.cos(lon_rad)
+    sin_lat = float(np.sin(lat_rad))
+    cos_lat = float(np.cos(lat_rad))
+    sin_lon = float(np.sin(lon_rad))
+    cos_lon = float(np.cos(lon_rad))
 
-    e = -sin_lon * dx + cos_lon * dy
-    n = -sin_lat * cos_lon * dx - sin_lat * sin_lon * dy + cos_lat * dz
-    u = cos_lat * cos_lon * dx + cos_lat * sin_lon * dy + sin_lat * dz
+    rot = np.array([
+        [-sin_lon, cos_lon, 0.0],
+        [-sin_lat * cos_lon, -sin_lat * sin_lon, cos_lat],
+        [cos_lat * cos_lon, cos_lat * sin_lon, sin_lat],
+    ])
+    enu = rot @ np.array([dx, dy, dz])
 
-    return e, n, u
+    return float(enu[0]), float(enu[1]), float(enu[2])
 
 
 def compute_observation(
@@ -77,21 +82,19 @@ def compute_observation(
     """
     station_ecef = geodetic_to_ecef(station.lat_deg, station.lon_deg, station.alt_m)
 
-    range_ecef = (
-        satellite_ecef[0] - station_ecef[0],
-        satellite_ecef[1] - station_ecef[1],
-        satellite_ecef[2] - station_ecef[2],
-    )
+    range_vec = np.array(satellite_ecef) - np.array(station_ecef)
+    range_ecef = (float(range_vec[0]), float(range_vec[1]), float(range_vec[2]))
 
-    lat_rad = math.radians(station.lat_deg)
-    lon_rad = math.radians(station.lon_deg)
+    lat_rad = float(np.radians(station.lat_deg))
+    lon_rad = float(np.radians(station.lon_deg))
     e, n, u = _ecef_to_enu(range_ecef, lat_rad, lon_rad)
 
-    slant_range = math.sqrt(e**2 + n**2 + u**2)
-    horizontal = math.sqrt(e**2 + n**2)
+    enu_arr = np.array([e, n, u])
+    slant_range = float(np.linalg.norm(enu_arr))
+    horizontal = float(np.sqrt(e**2 + n**2))
 
-    elevation_deg = math.degrees(math.atan2(u, horizontal))
-    azimuth_deg = math.degrees(math.atan2(e, n)) % 360.0
+    elevation_deg = float(np.degrees(np.arctan2(u, horizontal)))
+    azimuth_deg = float(np.degrees(np.arctan2(e, n))) % 360.0
 
     return Observation(
         azimuth_deg=azimuth_deg,

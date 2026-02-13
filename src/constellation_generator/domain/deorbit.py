@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
 from constellation_generator.domain.atmosphere import DragConfig
 from constellation_generator.domain.lifetime import compute_orbit_lifetime
@@ -143,15 +145,15 @@ def assess_deorbit_compliance(
     r_perigee = _R_EARTH + target_perigee_km * 1000.0
     a_target = (r_circular + r_perigee) / 2.0
     # dV = v_circular - v_at_apogee_of_target_orbit
-    v_circular = math.sqrt(_MU / r_circular)
-    v_at_apogee = math.sqrt(_MU * (2.0 / r_circular - 1.0 / a_target))
+    v_circular = float(np.sqrt(_MU / r_circular))
+    v_at_apogee = float(np.sqrt(_MU * (2.0 / r_circular - 1.0 / a_target)))
     delta_v = abs(v_circular - v_at_apogee)
 
     # Propellant estimate
     propellant_mass = None
     if isp_s is not None and dry_mass_kg is not None and delta_v > 0:
         propellant_mass = dry_mass_kg * (
-            math.exp(delta_v / (isp_s * _G0)) - 1.0
+            float(np.exp(delta_v / (isp_s * _G0))) - 1.0
         )
 
     return DeorbitAssessment(

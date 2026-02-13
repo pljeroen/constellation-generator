@@ -15,6 +15,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import numpy as np
+
 AU_METERS: float = 1.495978707e11  # Astronomical unit in meters
 
 # J2000.0 reference epoch
@@ -52,30 +54,30 @@ def sun_position_eci(epoch: datetime) -> SunPosition:
 
     # Mean anomaly (degrees)
     M_deg = (357.5291 + 35999.0503 * T) % 360.0
-    M_rad = math.radians(M_deg)
+    M_rad = float(np.radians(M_deg))
 
     # Ecliptic longitude (degrees)
-    L_deg = (280.4665 + 36000.7698 * T + 1.9146 * math.sin(M_rad)
-             + 0.0200 * math.sin(2.0 * M_rad)) % 360.0
-    L_rad = math.radians(L_deg)
+    L_deg = (280.4665 + 36000.7698 * T + 1.9146 * float(np.sin(M_rad))
+             + 0.0200 * float(np.sin(2.0 * M_rad))) % 360.0
+    L_rad = float(np.radians(L_deg))
 
     # Obliquity of the ecliptic (degrees)
     eps_deg = 23.4393 - 0.01300 * T
-    eps_rad = math.radians(eps_deg)
+    eps_rad = float(np.radians(eps_deg))
 
     # Right ascension and declination
-    ra_rad = math.atan2(math.cos(eps_rad) * math.sin(L_rad), math.cos(L_rad))
-    dec_rad = math.asin(math.sin(eps_rad) * math.sin(L_rad))
+    ra_rad = float(np.arctan2(np.cos(eps_rad) * np.sin(L_rad), np.cos(L_rad)))
+    dec_rad = float(np.arcsin(np.sin(eps_rad) * np.sin(L_rad)))
 
     # Distance in AU
-    r_au = 1.00014 - 0.01671 * math.cos(M_rad) - 0.00014 * math.cos(2.0 * M_rad)
+    r_au = 1.00014 - 0.01671 * float(np.cos(M_rad)) - 0.00014 * float(np.cos(2.0 * M_rad))
     distance_m = r_au * AU_METERS
 
     # ECI position
-    cos_ra = math.cos(ra_rad)
-    sin_ra = math.sin(ra_rad)
-    cos_dec = math.cos(dec_rad)
-    sin_dec = math.sin(dec_rad)
+    cos_ra = float(np.cos(ra_rad))
+    sin_ra = float(np.sin(ra_rad))
+    cos_dec = float(np.cos(dec_rad))
+    sin_dec = float(np.sin(dec_rad))
 
     x = distance_m * cos_ra * cos_dec
     y = distance_m * sin_ra * cos_dec

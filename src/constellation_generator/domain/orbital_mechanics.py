@@ -9,6 +9,8 @@ No external dependencies — only stdlib math.
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 
 @dataclass(frozen=True)
 class _OrbitalConstants:
@@ -53,35 +55,37 @@ def kepler_to_cartesian(
     """
     mu = OrbitalConstants.MU_EARTH
 
-    r = a * (1 - e**2) / (1 + e * math.cos(nu_rad))
+    cos_nu = float(np.cos(nu_rad))
+    sin_nu = float(np.sin(nu_rad))
 
-    p_factor = math.sqrt(mu / (a * (1 - e**2)))
-    pos_pqw = [r * math.cos(nu_rad), r * math.sin(nu_rad), 0.0]
-    vel_pqw = [
-        -p_factor * math.sin(nu_rad),
-        p_factor * (e + math.cos(nu_rad)),
+    r = a * (1 - e**2) / (1 + e * cos_nu)
+
+    p_factor = float(np.sqrt(mu / (a * (1 - e**2))))
+    pos_pqw = np.array([r * cos_nu, r * sin_nu, 0.0])
+    vel_pqw = np.array([
+        -p_factor * sin_nu,
+        p_factor * (e + cos_nu),
         0.0,
-    ]
+    ])
 
-    cO = math.cos(omega_big_rad)
-    sO = math.sin(omega_big_rad)
-    co = math.cos(omega_small_rad)
-    so = math.sin(omega_small_rad)
-    ci = math.cos(i_rad)
-    si = math.sin(i_rad)
+    cO = float(np.cos(omega_big_rad))
+    sO = float(np.sin(omega_big_rad))
+    co = float(np.cos(omega_small_rad))
+    so = float(np.sin(omega_small_rad))
+    ci = float(np.cos(i_rad))
+    si = float(np.sin(i_rad))
 
-    rotation = [
+    rotation = np.array([
         [cO * co - sO * so * ci, -cO * so - sO * co * ci, sO * si],
         [sO * co + cO * so * ci, -sO * so + cO * co * ci, -cO * si],
         [so * si, co * si, ci],
-    ]
+    ])
 
-    pos_eci = [
-        sum(rotation[j][k] * pos_pqw[k] for k in range(3)) for j in range(3)
-    ]
-    vel_eci = [
-        sum(rotation[j][k] * vel_pqw[k] for k in range(3)) for j in range(3)
-    ]
+    pos_eci_arr = rotation @ pos_pqw
+    vel_eci_arr = rotation @ vel_pqw
+
+    pos_eci = [float(pos_eci_arr[0]), float(pos_eci_arr[1]), float(pos_eci_arr[2])]
+    vel_eci = [float(vel_eci_arr[0]), float(vel_eci_arr[1]), float(vel_eci_arr[2])]
 
     return pos_eci, vel_eci
 
@@ -102,9 +106,11 @@ def sso_inclination_deg(altitude_km: float) -> float:
     c = OrbitalConstants
     r = altitude_km * 1000 + c.R_EARTH
     cos_i = -(2 * c.EARTH_OMEGA / (3 * c.J2_EARTH * c.R_EARTH**2)) * (
-        r**3.5 / math.sqrt(c.MU_EARTH)
+        r**3.5 / float(np.sqrt(c.MU_EARTH))
     )
-    return math.degrees(math.acos(cos_i))
+    if cos_i < -1.0 or cos_i > 1.0:
+        raise ValueError(f"math domain error: cos_i={cos_i}")
+    return float(np.degrees(np.arccos(cos_i)))
 
 
 def j2_raan_rate(n: float, a: float, e: float, i_rad: float) -> float:
@@ -124,7 +130,7 @@ def j2_raan_rate(n: float, a: float, e: float, i_rad: float) -> float:
     """
     c = OrbitalConstants
     p_ratio = (c.R_EARTH / a) ** 2
-    return -1.5 * n * c.J2_EARTH * p_ratio * math.cos(i_rad) / (1 - e**2) ** 2
+    return float(-1.5 * n * c.J2_EARTH * p_ratio * np.cos(i_rad) / (1 - e**2) ** 2)
 
 
 def j2_arg_perigee_rate(n: float, a: float, e: float, i_rad: float) -> float:
@@ -146,7 +152,7 @@ def j2_arg_perigee_rate(n: float, a: float, e: float, i_rad: float) -> float:
     """
     c = OrbitalConstants
     p_ratio = (c.R_EARTH / a) ** 2
-    return 1.5 * n * c.J2_EARTH * p_ratio * (2 - 2.5 * math.sin(i_rad) ** 2) / (1 - e**2) ** 2
+    return float(1.5 * n * c.J2_EARTH * p_ratio * (2 - 2.5 * np.sin(i_rad) ** 2) / (1 - e**2) ** 2)
 
 
 def j2_mean_motion_correction(n: float, a: float, e: float, i_rad: float) -> float:
@@ -166,4 +172,4 @@ def j2_mean_motion_correction(n: float, a: float, e: float, i_rad: float) -> flo
     """
     c = OrbitalConstants
     p_ratio = (c.R_EARTH / a) ** 2
-    return n * (1 + 1.5 * c.J2_EARTH * p_ratio * math.sqrt(1 - e**2) * (1 - 1.5 * math.sin(i_rad) ** 2))
+    return float(n * (1 + 1.5 * c.J2_EARTH * p_ratio * np.sqrt(1 - e**2) * (1 - 1.5 * np.sin(i_rad) ** 2)))

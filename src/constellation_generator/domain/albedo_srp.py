@@ -12,6 +12,8 @@ Both produce radially outward acceleration that decreases with altitude.
 import math
 from datetime import datetime
 
+import numpy as np
+
 
 # --- Constants ---
 
@@ -26,18 +28,20 @@ _AU = 1.495978707e11  # m
 # --- Vector helpers ---
 
 def _dot(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
-    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+    return float(np.dot(a, b))
 
 
 def _mag(v: tuple[float, float, float]) -> float:
-    return math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+    return float(np.linalg.norm(v))
 
 
 def _unit(v: tuple[float, float, float]) -> tuple[float, float, float]:
-    m = _mag(v)
+    v_arr = np.array(v)
+    m = float(np.linalg.norm(v_arr))
     if m < 1e-30:
         return (0.0, 0.0, 0.0)
-    return (v[0] / m, v[1] / m, v[2] / m)
+    u = v_arr / m
+    return (float(u[0]), float(u[1]), float(u[2]))
 
 
 # --- Sun position ---
@@ -59,20 +63,20 @@ def _sun_position_approx(dt: datetime) -> tuple[float, float, float]:
     """Approximate Sun position in ECI (meters)."""
     jd = _datetime_to_jd(dt)
     t = (jd - 2451545.0) / 36525.0
-    mean_anom = math.radians((357.5291092 + 35999.0502909 * t) % 360)
+    mean_anom = float(np.radians((357.5291092 + 35999.0502909 * t) % 360))
     center = (
-        (1.9146 - 0.004817 * t) * math.sin(mean_anom)
-        + 0.019993 * math.sin(2 * mean_anom)
+        (1.9146 - 0.004817 * t) * float(np.sin(mean_anom))
+        + 0.019993 * float(np.sin(2 * mean_anom))
     )
-    sun_lon = math.radians((280.46646 + 36000.76983 * t + center) % 360)
-    eps = math.radians(23.439291 - 0.0130042 * t)
+    sun_lon = float(np.radians((280.46646 + 36000.76983 * t + center) % 360))
+    eps = float(np.radians(23.439291 - 0.0130042 * t))
     e = 0.016708634 - 0.000042037 * t
-    nu = mean_anom + math.radians(center)
-    r = 1.000001018 * (1 - e * e) / (1 + e * math.cos(nu)) * _AU
+    nu = mean_anom + float(np.radians(center))
+    r = 1.000001018 * (1 - e * e) / (1 + e * float(np.cos(nu))) * _AU
 
-    x = r * math.cos(sun_lon)
-    y = r * math.sin(sun_lon) * math.cos(eps)
-    z = r * math.sin(sun_lon) * math.sin(eps)
+    x = r * float(np.cos(sun_lon))
+    y = r * float(np.sin(sun_lon)) * float(np.cos(eps))
+    z = r * float(np.sin(sun_lon)) * float(np.sin(eps))
     return (x, y, z)
 
 

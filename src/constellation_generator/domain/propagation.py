@@ -12,6 +12,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import (
     OrbitalConstants,
     kepler_to_cartesian,
@@ -60,23 +62,21 @@ def derive_orbital_state(
     Returns:
         OrbitalState for use with propagate_to / propagate_ecef_to.
     """
-    px, py, pz = satellite.position_eci
-    vx, vy, vz = satellite.velocity_eci
+    pos = np.array(satellite.position_eci)
+    vel = np.array(satellite.velocity_eci)
 
-    r_mag = math.sqrt(px**2 + py**2 + pz**2)
+    r_mag = float(np.linalg.norm(pos))
     a = r_mag
     e = 0.0
 
-    hx = py * vz - pz * vy
-    hy = pz * vx - px * vz
-    hz = px * vy - py * vx
-    h_mag = math.sqrt(hx**2 + hy**2 + hz**2)
-    inc_rad = math.acos(hz / h_mag) if h_mag > 0 else 0.0
+    h = np.cross(pos, vel)
+    h_mag = float(np.linalg.norm(h))
+    inc_rad = float(np.arccos(h[2] / h_mag)) if h_mag > 0 else 0.0
 
-    n = math.sqrt(OrbitalConstants.MU_EARTH / a**3)
+    n = float(np.sqrt(OrbitalConstants.MU_EARTH / a**3))
 
-    raan_rad = math.radians(satellite.raan_deg)
-    nu_0_rad = math.radians(satellite.true_anomaly_deg)
+    raan_rad = float(np.radians(satellite.raan_deg))
+    nu_0_rad = float(np.radians(satellite.true_anomaly_deg))
 
     if satellite.epoch is not None:
         epoch_offset = (reference_epoch - satellite.epoch).total_seconds()

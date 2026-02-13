@@ -11,6 +11,8 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime
 
+import numpy as np
+
 from .orbital_mechanics import kepler_to_cartesian, sso_inclination_deg, OrbitalConstants
 
 
@@ -52,7 +54,7 @@ def generate_walker_shell(config: ShellConfig) -> list[Satellite]:
     r = OrbitalConstants.R_EARTH + config.altitude_km * 1000
     a = r
     e = 0.0
-    i_rad = math.radians(config.inclination_deg)
+    i_rad = float(np.radians(config.inclination_deg))
     omega_small_rad = 0.0
     total_sats = config.num_planes * config.sats_per_plane
 
@@ -60,7 +62,7 @@ def generate_walker_shell(config: ShellConfig) -> list[Satellite]:
 
     for plane_idx in range(config.num_planes):
         raan_deg = config.raan_offset_deg + (plane_idx * 360.0 / config.num_planes)
-        omega_big_rad = math.radians(raan_deg)
+        omega_big_rad = float(np.radians(raan_deg))
 
         for sat_idx in range(config.sats_per_plane):
             nu_deg = (
@@ -68,7 +70,7 @@ def generate_walker_shell(config: ShellConfig) -> list[Satellite]:
                 + (plane_idx * config.phase_factor * 360.0 / total_sats)
             )
             nu_deg = nu_deg % 360.0
-            nu_rad = math.radians(nu_deg)
+            nu_rad = float(np.radians(nu_deg))
 
             pos, vel = kepler_to_cartesian(
                 a=a, e=e, i_rad=i_rad,

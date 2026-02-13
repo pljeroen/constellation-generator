@@ -11,6 +11,8 @@ No external dependencies — only stdlib dataclasses/datetime.
 from dataclasses import dataclass
 from datetime import datetime
 
+import numpy as np
+
 from constellation_generator.domain.propagation import (
     OrbitalState,
     propagate_ecef_to,

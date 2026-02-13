@@ -14,6 +14,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
+
 
 _MU = 3.986004418e14  # m³/s² — Earth gravitational parameter
 
@@ -119,7 +121,7 @@ def _two_body_propagate(
     State = [x, y, z, vx, vy, vz].
     """
     def deriv(s: list[float]) -> list[float]:
-        r = math.sqrt(s[0]**2 + s[1]**2 + s[2]**2)
+        r = float(np.linalg.norm(s[:3]))
         r3 = r**3
         coeff = -_MU / r3
         return [s[3], s[4], s[5], coeff * s[0], coeff * s[1], coeff * s[2]]
@@ -226,7 +228,7 @@ def _kalman_update(
     p_new = _mat_add(p_joseph, _mat_scale(kk_t, r_sq))
 
     # Post-fit residual
-    residual = math.sqrt(y[0]**2 + y[1]**2 + y[2]**2)
+    residual = float(np.linalg.norm(y))
 
     return x_new, p_new, residual
 
@@ -291,7 +293,7 @@ def run_ekf(
             residual_m=residual,
         ))
 
-    rms_residual = math.sqrt(residuals_sq_sum / len(observations))
+    rms_residual = float(np.sqrt(residuals_sq_sum / len(observations)))
     final_cov = tuple(tuple(row) for row in cov)
 
     return ODResult(

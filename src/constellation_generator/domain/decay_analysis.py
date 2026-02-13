@@ -14,6 +14,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState
 from constellation_generator.domain.atmosphere import DragConfig, atmospheric_density
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
@@ -26,7 +28,7 @@ _R_EARTH = OrbitalConstants.R_EARTH
 _MU = OrbitalConstants.MU_EARTH
 _G0 = 9.80665
 _SECONDS_PER_YEAR = 365.25 * 86400.0
-_LN2 = math.log(2.0)
+_LN2 = float(np.log(2.0))
 
 
 @dataclass(frozen=True)
@@ -61,7 +63,7 @@ def _atmospheric_scale_height(altitude_km: float, delta_km: float = 1.0) -> floa
     ratio = rho_upper / rho_base
     if ratio >= 1.0 or ratio <= 0.0:
         return delta_km
-    return -delta_km / math.log(ratio)
+    return -delta_km / float(np.log(ratio))
 
 
 def compute_exponential_scale_map(
@@ -96,7 +98,7 @@ def compute_exponential_scale_map(
     a = state.semi_major_axis_m
     n = state.mean_motion_rad_s
     rho = atmospheric_density(alt_km)
-    v = math.sqrt(_MU / a)
+    v = float(np.sqrt(_MU / a))
     bc = drag_config.ballistic_coefficient
     da_dt_m_s = rho * v * bc * a  # m/s (positive = rate of decay)
     da_dt_km_year = (da_dt_m_s / 1000.0) * _SECONDS_PER_YEAR if da_dt_m_s > 0 else 1e-15

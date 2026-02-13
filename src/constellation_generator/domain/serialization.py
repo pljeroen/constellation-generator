@@ -8,6 +8,8 @@ semicolon-delimited string format with Y/Z axis swap.
 No external dependencies.
 """
 
+import numpy as np
+
 
 def format_position(pos_eci: list[float] | tuple[float, float, float]) -> str:
     """

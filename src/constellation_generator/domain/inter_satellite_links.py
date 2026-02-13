@@ -13,6 +13,8 @@ No external dependencies — only stdlib math/dataclasses.
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
 from constellation_generator.domain.propagation import OrbitalState, propagate_to
 
@@ -58,29 +60,25 @@ def is_earth_blocked(
     """
     r_earth = earth_radius_m if earth_radius_m is not None else _R_EARTH
 
-    ax, ay, az = pos_a_eci
-    bx, by, bz = pos_b_eci
+    a_vec = np.array(pos_a_eci)
+    b_vec = np.array(pos_b_eci)
 
     # Direction vector d = B - A
-    dx = bx - ax
-    dy = by - ay
-    dz = bz - az
+    d_vec = b_vec - a_vec
 
-    d_dot_d = dx * dx + dy * dy + dz * dz
+    d_dot_d = float(np.dot(d_vec, d_vec))
     if d_dot_d < 1e-20:
         # Same position: not blocked (degenerate case)
         return False
 
     # t_min = clamp(-dot(A, d) / |d|², 0, 1)
-    a_dot_d = ax * dx + ay * dy + az * dz
+    a_dot_d = float(np.dot(a_vec, d_vec))
     t_min = max(0.0, min(1.0, -a_dot_d / d_dot_d))
 
     # Closest point on segment to origin
-    cx = ax + t_min * dx
-    cy = ay + t_min * dy
-    cz = az + t_min * dz
+    closest = a_vec + t_min * d_vec
 
-    closest_dist = math.sqrt(cx * cx + cy * cy + cz * cz)
+    closest_dist = float(np.linalg.norm(closest))
     return closest_dist < r_earth
 
 
@@ -103,10 +101,8 @@ def compute_isl_link(
     Returns:
         ISLLink with distance and blockage status.
     """
-    dx = pos_b_eci[0] - pos_a_eci[0]
-    dy = pos_b_eci[1] - pos_a_eci[1]
-    dz = pos_b_eci[2] - pos_a_eci[2]
-    distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+    dp = np.array(pos_b_eci) - np.array(pos_a_eci)
+    distance = float(np.linalg.norm(dp))
 
     blocked = is_earth_blocked(pos_a_eci, pos_b_eci, earth_radius_m)
 

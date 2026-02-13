@@ -13,6 +13,8 @@ No external dependencies — only stdlib math/dataclasses.
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState, propagate_to
 from constellation_generator.domain.inter_satellite_links import (
     ISLLink,

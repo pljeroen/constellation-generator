@@ -13,6 +13,8 @@ No external dependencies — only stdlib math/dataclasses.
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 from constellation_generator.domain.propagation import (
     OrbitalState,
     propagate_ecef_to,
@@ -140,26 +142,24 @@ def compute_dop(
             vdop=float('inf'), tdop=float('inf'), num_visible=num_visible,
         )
 
-    # Compute H^T H (4x4)
-    hth: list[list[float]] = [[0.0] * 4 for _ in range(4)]
-    for i in range(4):
-        for j in range(4):
-            for row in h_rows:
-                hth[i][j] += row[i] * row[j]
+    # Compute H^T H (4x4) using numpy
+    H = np.array(h_rows)
+    hth = H.T @ H
 
     # Q = (H^T H)^-1
-    q = _invert_4x4(hth)
-    if q is None:
+    q_list = _invert_4x4(hth.tolist())
+    if q_list is None:
         return DOPResult(
             gdop=float('inf'), pdop=float('inf'), hdop=float('inf'),
             vdop=float('inf'), tdop=float('inf'), num_visible=num_visible,
         )
 
-    gdop = math.sqrt(q[0][0] + q[1][1] + q[2][2] + q[3][3])
-    pdop = math.sqrt(q[0][0] + q[1][1] + q[2][2])
-    hdop = math.sqrt(q[0][0] + q[1][1])
-    vdop = math.sqrt(q[2][2])
-    tdop = math.sqrt(q[3][3])
+    q = np.array(q_list)
+    gdop = float(np.sqrt(q[0, 0] + q[1, 1] + q[2, 2] + q[3, 3]))
+    pdop = float(np.sqrt(q[0, 0] + q[1, 1] + q[2, 2]))
+    hdop = float(np.sqrt(q[0, 0] + q[1, 1]))
+    vdop = float(np.sqrt(q[2, 2]))
+    tdop = float(np.sqrt(q[3, 3]))
 
     return DOPResult(
         gdop=gdop, pdop=pdop, hdop=hdop, vdop=vdop, tdop=tdop,

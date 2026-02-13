@@ -18,6 +18,8 @@ Bowring method on the WGS84 ellipsoid.
 import math
 from datetime import datetime, timezone
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
 
 
@@ -54,7 +56,7 @@ def gmst_rad(epoch: datetime) -> float:
     if gmst_deg < 0:
         gmst_deg += 360.0
 
-    return math.radians(gmst_deg)
+    return float(np.radians(gmst_deg))
 
 
 def eci_to_ecef(
@@ -78,20 +80,20 @@ def eci_to_ecef(
     Returns:
         (pos_ecef, vel_ecef) as tuples of (x, y, z) in meters and m/s.
     """
-    cos_t = math.cos(gmst_angle_rad)
-    sin_t = math.sin(gmst_angle_rad)
+    cos_t = float(np.cos(gmst_angle_rad))
+    sin_t = float(np.sin(gmst_angle_rad))
 
-    pos_ecef = (
-        cos_t * pos_eci[0] + sin_t * pos_eci[1],
-        -sin_t * pos_eci[0] + cos_t * pos_eci[1],
-        pos_eci[2],
-    )
+    rot = np.array([
+        [cos_t, sin_t, 0.0],
+        [-sin_t, cos_t, 0.0],
+        [0.0, 0.0, 1.0],
+    ])
 
-    vel_ecef = (
-        cos_t * vel_eci[0] + sin_t * vel_eci[1],
-        -sin_t * vel_eci[0] + cos_t * vel_eci[1],
-        vel_eci[2],
-    )
+    pos_ecef_arr = rot @ np.array(pos_eci)
+    vel_ecef_arr = rot @ np.array(vel_eci)
+
+    pos_ecef = (float(pos_ecef_arr[0]), float(pos_ecef_arr[1]), float(pos_ecef_arr[2]))
+    vel_ecef = (float(vel_ecef_arr[0]), float(vel_ecef_arr[1]), float(vel_ecef_arr[2]))
 
     return pos_ecef, vel_ecef
 
@@ -117,32 +119,32 @@ def ecef_to_geodetic(
     e2 = c.E_SQUARED
 
     x, y, z = pos_ecef
-    p = math.sqrt(x**2 + y**2)
+    p = float(np.sqrt(x**2 + y**2))
 
     # Longitude
-    lon_rad = math.atan2(y, x)
+    lon_rad = float(np.arctan2(y, x))
 
     # Iterative Bowring method for latitude
     # Initial estimate using spherical approximation
-    lat_rad = math.atan2(z, p * (1.0 - e2))
+    lat_rad = float(np.arctan2(z, p * (1.0 - e2)))
 
     for _ in range(10):
-        sin_lat = math.sin(lat_rad)
-        n = a / math.sqrt(1.0 - e2 * sin_lat**2)
-        lat_rad = math.atan2(z + e2 * n * sin_lat, p)
+        sin_lat = float(np.sin(lat_rad))
+        n = a / float(np.sqrt(1.0 - e2 * sin_lat**2))
+        lat_rad = float(np.arctan2(z + e2 * n * sin_lat, p))
 
     # Altitude
-    sin_lat = math.sin(lat_rad)
-    cos_lat = math.cos(lat_rad)
-    n = a / math.sqrt(1.0 - e2 * sin_lat**2)
+    sin_lat = float(np.sin(lat_rad))
+    cos_lat = float(np.cos(lat_rad))
+    n = a / float(np.sqrt(1.0 - e2 * sin_lat**2))
 
     if abs(cos_lat) > 1e-10:
         alt = p / cos_lat - n
     else:
         alt = abs(z) - b
 
-    lat_deg = math.degrees(lat_rad)
-    lon_deg = math.degrees(lon_rad)
+    lat_deg = float(np.degrees(lat_rad))
+    lon_deg = float(np.degrees(lon_rad))
 
     return lat_deg, lon_deg, alt
 
@@ -169,15 +171,15 @@ def geodetic_to_ecef(
     a = c.R_EARTH_EQUATORIAL
     e2 = c.E_SQUARED
 
-    lat_rad = math.radians(lat_deg)
-    lon_rad = math.radians(lon_deg)
+    lat_rad = float(np.radians(lat_deg))
+    lon_rad = float(np.radians(lon_deg))
 
-    sin_lat = math.sin(lat_rad)
-    cos_lat = math.cos(lat_rad)
-    sin_lon = math.sin(lon_rad)
-    cos_lon = math.cos(lon_rad)
+    sin_lat = float(np.sin(lat_rad))
+    cos_lat = float(np.cos(lat_rad))
+    sin_lon = float(np.sin(lon_rad))
+    cos_lon = float(np.cos(lon_rad))
 
-    n = a / math.sqrt(1.0 - e2 * sin_lat**2)
+    n = a / float(np.sqrt(1.0 - e2 * sin_lat**2))
 
     x = (n + alt_m) * cos_lat * cos_lon
     y = (n + alt_m) * cos_lat * sin_lon

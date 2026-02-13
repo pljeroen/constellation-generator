@@ -13,6 +13,8 @@ No external dependencies — only stdlib math/dataclasses.
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
 
 _MU = OrbitalConstants.MU_EARTH
@@ -65,13 +67,13 @@ def hohmann_transfer(r1_m: float, r2_m: float) -> TransferPlan:
             transfer_time_s=0.0,
         )
 
-    v1 = math.sqrt(_MU / r1_m)
-    v2 = math.sqrt(_MU / r2_m)
+    v1 = float(np.sqrt(_MU / r1_m))
+    v2 = float(np.sqrt(_MU / r2_m))
 
-    dv1 = abs(v1 * (math.sqrt(2.0 * r2_m / (r1_m + r2_m)) - 1.0))
-    dv2 = abs(v2 * (1.0 - math.sqrt(2.0 * r1_m / (r1_m + r2_m))))
+    dv1 = abs(v1 * (float(np.sqrt(2.0 * r2_m / (r1_m + r2_m))) - 1.0))
+    dv2 = abs(v2 * (1.0 - float(np.sqrt(2.0 * r1_m / (r1_m + r2_m)))))
 
-    t_transfer = math.pi * math.sqrt((r1_m + r2_m) ** 3 / (8.0 * _MU))
+    t_transfer = np.pi * float(np.sqrt((r1_m + r2_m) ** 3 / (8.0 * _MU)))
 
     return TransferPlan(
         burns=(
@@ -109,24 +111,24 @@ def bielliptic_transfer(
             f"max(r1, r2) = {max(r1_m, r2_m)}"
         )
 
-    v1 = math.sqrt(_MU / r1_m)
+    v1 = float(np.sqrt(_MU / r1_m))
     # Burn 1: raise apogee from r1 to r_intermediate
-    v_transfer1_peri = math.sqrt(2.0 * _MU * r_intermediate_m / (r1_m * (r1_m + r_intermediate_m)))
+    v_transfer1_peri = float(np.sqrt(2.0 * _MU * r_intermediate_m / (r1_m * (r1_m + r_intermediate_m))))
     dv1 = abs(v_transfer1_peri - v1)
 
     # Burn 2: at r_intermediate, change orbit from (r1, r_int) to (r2, r_int)
-    v_transfer1_apo = math.sqrt(2.0 * _MU * r1_m / (r_intermediate_m * (r1_m + r_intermediate_m)))
-    v_transfer2_apo = math.sqrt(2.0 * _MU * r2_m / (r_intermediate_m * (r2_m + r_intermediate_m)))
+    v_transfer1_apo = float(np.sqrt(2.0 * _MU * r1_m / (r_intermediate_m * (r1_m + r_intermediate_m))))
+    v_transfer2_apo = float(np.sqrt(2.0 * _MU * r2_m / (r_intermediate_m * (r2_m + r_intermediate_m))))
     dv2 = abs(v_transfer2_apo - v_transfer1_apo)
 
     # Burn 3: circularize at r2
-    v_transfer2_peri = math.sqrt(2.0 * _MU * r_intermediate_m / (r2_m * (r2_m + r_intermediate_m)))
-    v2 = math.sqrt(_MU / r2_m)
+    v_transfer2_peri = float(np.sqrt(2.0 * _MU * r_intermediate_m / (r2_m * (r2_m + r_intermediate_m))))
+    v2 = float(np.sqrt(_MU / r2_m))
     dv3 = abs(v2 - v_transfer2_peri)
 
     # Transfer time: half-period of first transfer + half-period of second
-    t1 = math.pi * math.sqrt((r1_m + r_intermediate_m) ** 3 / (8.0 * _MU))
-    t2 = math.pi * math.sqrt((r2_m + r_intermediate_m) ** 3 / (8.0 * _MU))
+    t1 = np.pi * float(np.sqrt((r1_m + r_intermediate_m) ** 3 / (8.0 * _MU)))
+    t2 = np.pi * float(np.sqrt((r2_m + r_intermediate_m) ** 3 / (8.0 * _MU)))
 
     return TransferPlan(
         burns=(
@@ -151,7 +153,7 @@ def plane_change_dv(velocity_ms: float, inclination_change_rad: float) -> float:
     Returns:
         Delta-V in m/s.
     """
-    return 2.0 * velocity_ms * abs(math.sin(inclination_change_rad / 2.0))
+    return 2.0 * velocity_ms * abs(float(np.sin(inclination_change_rad / 2.0)))
 
 
 def combined_plane_and_altitude(
@@ -173,24 +175,24 @@ def combined_plane_and_altitude(
     if r1_m <= 0 or r2_m <= 0:
         raise ValueError("Radii must be positive")
 
-    v1_circ = math.sqrt(_MU / r1_m)
+    v1_circ = float(np.sqrt(_MU / r1_m))
 
     # Hohmann transfer ellipse velocities
     a_transfer = (r1_m + r2_m) / 2.0
-    v_depart = math.sqrt(_MU * (2.0 / r1_m - 1.0 / a_transfer))
-    v_arrive = math.sqrt(_MU * (2.0 / r2_m - 1.0 / a_transfer))
-    v2_circ = math.sqrt(_MU / r2_m)
+    v_depart = float(np.sqrt(_MU * (2.0 / r1_m - 1.0 / a_transfer)))
+    v_arrive = float(np.sqrt(_MU * (2.0 / r2_m - 1.0 / a_transfer)))
+    v2_circ = float(np.sqrt(_MU / r2_m))
 
     # Burn 1: tangential at departure (no plane change)
     dv1 = abs(v_depart - v1_circ)
 
     # Burn 2: combined circularization + plane change at arrival
-    dv2 = math.sqrt(
+    dv2 = float(np.sqrt(
         v_arrive**2 + v2_circ**2
-        - 2.0 * v_arrive * v2_circ * math.cos(inclination_change_rad)
-    )
+        - 2.0 * v_arrive * v2_circ * np.cos(inclination_change_rad)
+    ))
 
-    t_transfer = math.pi * math.sqrt(a_transfer**3 / _MU)
+    t_transfer = np.pi * float(np.sqrt(a_transfer**3 / _MU))
 
     return TransferPlan(
         burns=(
@@ -225,17 +227,17 @@ def phasing_maneuver(
     if n_orbits < 1:
         raise ValueError(f"n_orbits must be >= 1, got {n_orbits}")
 
-    T_nominal = 2.0 * math.pi * math.sqrt(a_m**3 / _MU)
+    T_nominal = 2.0 * np.pi * float(np.sqrt(a_m**3 / _MU))
 
     # Phasing orbit period: adjusted so after n_orbits, the phase gap is closed
-    T_phasing = T_nominal * (1.0 - phase_angle_rad / (2.0 * math.pi * n_orbits))
+    T_phasing = T_nominal * (1.0 - phase_angle_rad / (2.0 * np.pi * n_orbits))
 
     # Semi-major axis of phasing orbit from Kepler's 3rd law
-    a_phasing = ((_MU * (T_phasing / (2.0 * math.pi))**2))**(1.0 / 3.0)
+    a_phasing = ((_MU * (T_phasing / (2.0 * np.pi))**2))**(1.0 / 3.0)
 
     # Delta-V to enter and exit phasing orbit
-    v_nominal = math.sqrt(_MU / a_m)
-    v_phasing = math.sqrt(_MU * (2.0 / a_m - 1.0 / a_phasing))
+    v_nominal = float(np.sqrt(_MU / a_m))
+    v_phasing = float(np.sqrt(_MU * (2.0 / a_m - 1.0 / a_phasing)))
     dv = abs(v_phasing - v_nominal)
 
     transfer_time = T_phasing * n_orbits
@@ -299,7 +301,7 @@ def compute_finite_burn(
     exhaust_vel = config.isp_s * _G0
 
     # Tsiolkovsky: mf = m0 * exp(-dv / ve)
-    final_mass = config.initial_mass_kg * math.exp(-delta_v_target_ms / exhaust_vel)
+    final_mass = config.initial_mass_kg * float(np.exp(-delta_v_target_ms / exhaust_vel))
     propellant_mass = config.initial_mass_kg - final_mass
 
     # Burn duration: T = propellant * ve / thrust
@@ -348,8 +350,8 @@ def finite_burn_loss(
     )  # burn_duration * omega = burn_duration * v / r
 
     # Cosine loss (clamp arc to avoid negative effective dv for very long burns)
-    alpha = min(alpha, math.pi)
-    effective_dv = delta_v_ms * math.cos(alpha / 2.0)
+    alpha = min(alpha, np.pi)
+    effective_dv = delta_v_ms * float(np.cos(alpha / 2.0))
     return effective_dv
 
 
@@ -385,12 +387,12 @@ def low_thrust_spiral(
     if config.initial_mass_kg <= 0:
         raise ValueError(f"initial_mass_kg must be > 0, got {config.initial_mass_kg}")
 
-    v1 = math.sqrt(_MU / r1_m)
-    v2 = math.sqrt(_MU / r2_m)
+    v1 = float(np.sqrt(_MU / r1_m))
+    v2 = float(np.sqrt(_MU / r2_m))
     delta_v = abs(v1 - v2)
 
     exhaust_vel = config.isp_s * _G0
-    final_mass = config.initial_mass_kg * math.exp(-delta_v / exhaust_vel)
+    final_mass = config.initial_mass_kg * float(np.exp(-delta_v / exhaust_vel))
     propellant_mass = config.initial_mass_kg - final_mass
 
     # Exact burn duration from constant-thrust mass flow
@@ -398,7 +400,7 @@ def low_thrust_spiral(
 
     # Total arc traversed (spiral, so many orbits)
     avg_r = (r1_m + r2_m) / 2.0
-    avg_period = 2.0 * math.pi * math.sqrt(avg_r**3 / _MU)
+    avg_period = 2.0 * np.pi * float(np.sqrt(avg_r**3 / _MU))
     thrust_arc = (burn_duration / avg_period) * 360.0
 
     return FiniteBurnResult(
@@ -424,7 +426,7 @@ def add_propellant_estimate(
         New TransferPlan with propellant_mass_kg filled in.
     """
     prop_mass = dry_mass_kg * (
-        math.exp(transfer.total_delta_v_ms / (isp_s * _G0)) - 1.0
+        float(np.exp(transfer.total_delta_v_ms / (isp_s * _G0))) - 1.0
     )
     return TransferPlan(
         burns=transfer.burns,

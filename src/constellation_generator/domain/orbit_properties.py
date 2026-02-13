@@ -15,6 +15,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import (
     OrbitalConstants,
     j2_raan_rate,
@@ -76,8 +78,8 @@ def compute_orbital_velocity(state: OrbitalState) -> OrbitalVelocity:
         OrbitalVelocity with velocity (m/s), period (s), ground speed (km/h).
     """
     a = state.semi_major_axis_m
-    v_circ = math.sqrt(_MU / a)
-    T = 2.0 * math.pi * math.sqrt(a**3 / _MU)
+    v_circ = float(np.sqrt(_MU / a))
+    T = 2.0 * np.pi * float(np.sqrt(a**3 / _MU))
 
     # Ground speed: project orbital velocity onto Earth surface
     # v_ground = v_orbital * (R_E / a) - Earth rotation contribution is small
@@ -113,26 +115,24 @@ def compute_energy_momentum(
     if mu is None:
         mu = _MU
 
-    px, py, pz = pos_eci[0], pos_eci[1], pos_eci[2]
-    vx, vy, vz = vel_eci[0], vel_eci[1], vel_eci[2]
+    p_vec = np.array([pos_eci[0], pos_eci[1], pos_eci[2]], dtype=np.float64)
+    v_vec = np.array([vel_eci[0], vel_eci[1], vel_eci[2]], dtype=np.float64)
 
-    r = math.sqrt(px**2 + py**2 + pz**2)
+    r = float(np.linalg.norm(p_vec))
     if r < 1e-10:
         raise ValueError("position vector has zero magnitude")
-    v = math.sqrt(vx**2 + vy**2 + vz**2)
+    v = float(np.linalg.norm(v_vec))
 
     # Specific orbital energy (vis-viva)
     energy = v**2 / 2.0 - mu / r
 
     # Angular momentum vector: h = r × v
-    hx = py * vz - pz * vy
-    hy = pz * vx - px * vz
-    hz = px * vy - py * vx
-    h_mag = math.sqrt(hx**2 + hy**2 + hz**2)
+    h_vec = np.cross(p_vec, v_vec)
+    h_mag = float(np.linalg.norm(h_vec))
 
     # Vis-viva velocity at current radius
     # v² = mu * (2/r - 1/a), a = -mu/(2*E)
-    vis_viva_v = math.sqrt(2.0 * (energy + mu / r)) if (energy + mu / r) > 0 else v
+    vis_viva_v = float(np.sqrt(2.0 * (energy + mu / r))) if (energy + mu / r) > 0 else v
 
     return EnergyMomentum(
         specific_energy_j_kg=energy,
@@ -160,7 +160,7 @@ def check_sun_synchronous(state: OrbitalState) -> SunSyncCheck:
 
     # Compute actual J2 RAAN rate
     actual_rate_rad_s = j2_raan_rate(n, a, e, i)
-    actual_rate_deg_day = math.degrees(actual_rate_rad_s) * 86400.0
+    actual_rate_deg_day = float(np.degrees(actual_rate_rad_s)) * 86400.0
 
     required_rate_deg_day = _SSO_RAAN_RATE_DEG_DAY
     error = actual_rate_deg_day - required_rate_deg_day
@@ -195,33 +195,27 @@ def compute_rsw_velocity(
     Returns:
         (radial_ms, along_track_ms, cross_track_ms).
     """
-    px, py, pz = pos_eci[0], pos_eci[1], pos_eci[2]
-    vx, vy, vz = vel_eci[0], vel_eci[1], vel_eci[2]
+    p_vec = np.array([pos_eci[0], pos_eci[1], pos_eci[2]], dtype=np.float64)
+    v_vec = np.array([vel_eci[0], vel_eci[1], vel_eci[2]], dtype=np.float64)
 
     # R unit vector (radial, along position)
-    r_mag = math.sqrt(px**2 + py**2 + pz**2)
+    r_mag = float(np.linalg.norm(p_vec))
     if r_mag < 1e-10:
         raise ValueError("position vector has zero magnitude")
-    r_hat = (px / r_mag, py / r_mag, pz / r_mag)
+    r_hat = p_vec / r_mag
 
     # W unit vector (cross-track, h = r × v, then normalize)
-    wx = py * vz - pz * vy
-    wy = pz * vx - px * vz
-    wz = px * vy - py * vx
-    w_mag = math.sqrt(wx**2 + wy**2 + wz**2)
-    w_hat = (wx / w_mag, wy / w_mag, wz / w_mag)
+    w_vec = np.cross(p_vec, v_vec)
+    w_mag = float(np.linalg.norm(w_vec))
+    w_hat = w_vec / w_mag
 
     # S unit vector (along-track, S = W × R)
-    s_hat = (
-        w_hat[1] * r_hat[2] - w_hat[2] * r_hat[1],
-        w_hat[2] * r_hat[0] - w_hat[0] * r_hat[2],
-        w_hat[0] * r_hat[1] - w_hat[1] * r_hat[0],
-    )
+    s_hat = np.cross(w_hat, r_hat)
 
     # Project velocity onto RSW
-    v_r = vx * r_hat[0] + vy * r_hat[1] + vz * r_hat[2]
-    v_s = vx * s_hat[0] + vy * s_hat[1] + vz * s_hat[2]
-    v_w = vx * w_hat[0] + vy * w_hat[1] + vz * w_hat[2]
+    v_r = float(np.dot(v_vec, r_hat))
+    v_s = float(np.dot(v_vec, s_hat))
+    v_w = float(np.dot(v_vec, w_hat))
 
     return v_r, v_s, v_w
 
@@ -239,8 +233,8 @@ def compute_ltan(raan_rad: float, epoch: datetime) -> float:
         LTAN in hours (0.0 to 24.0).
     """
     sun = sun_position_eci(epoch)
-    ra_sun_deg = math.degrees(sun.right_ascension_rad)
-    raan_deg = math.degrees(raan_rad)
+    ra_sun_deg = float(np.degrees(sun.right_ascension_rad))
+    raan_deg = float(np.degrees(raan_rad))
 
     ltan = 12.0 + (raan_deg - ra_sun_deg) / 15.0
     ltan = ltan % 24.0
@@ -268,34 +262,34 @@ def state_vector_to_elements(
     if mu is None:
         mu = _MU
 
-    px, py, pz = pos_eci[0], pos_eci[1], pos_eci[2]
-    vx, vy, vz = vel_eci[0], vel_eci[1], vel_eci[2]
+    p_vec = np.array([pos_eci[0], pos_eci[1], pos_eci[2]], dtype=np.float64)
+    v_vec = np.array([vel_eci[0], vel_eci[1], vel_eci[2]], dtype=np.float64)
+    px, py, pz = p_vec[0], p_vec[1], p_vec[2]
+    vx, vy, vz = v_vec[0], v_vec[1], v_vec[2]
 
-    r_mag = math.sqrt(px**2 + py**2 + pz**2)
+    r_mag = float(np.linalg.norm(p_vec))
     if r_mag < 1e-10:
         raise ValueError("position vector has zero magnitude")
-    v_mag = math.sqrt(vx**2 + vy**2 + vz**2)
+    v_mag = float(np.linalg.norm(v_vec))
 
     # Angular momentum h = r × v
-    hx = py * vz - pz * vy
-    hy = pz * vx - px * vz
-    hz = px * vy - py * vx
-    h_mag = math.sqrt(hx**2 + hy**2 + hz**2)
+    h_vec = np.cross(p_vec, v_vec)
+    hx, hy, hz = h_vec[0], h_vec[1], h_vec[2]
+    h_mag = float(np.linalg.norm(h_vec))
 
     # Node vector n = k × h (where k = [0, 0, 1])
     nx = -hy
     ny = hx
-    n_mag = math.sqrt(nx**2 + ny**2)
+    n_mag = float(np.sqrt(nx**2 + ny**2))
 
     # Eccentricity vector e = ((v² - mu/r)*r - (r·v)*v) / mu
-    rdotv = px * vx + py * vy + pz * vz
+    rdotv = float(np.dot(p_vec, v_vec))
     coeff1 = (v_mag**2 - mu / r_mag)
     coeff2 = rdotv
 
-    ex = (coeff1 * px - coeff2 * vx) / mu
-    ey = (coeff1 * py - coeff2 * vy) / mu
-    ez = (coeff1 * pz - coeff2 * vz) / mu
-    ecc = math.sqrt(ex**2 + ey**2 + ez**2)
+    e_vec = (coeff1 * p_vec - coeff2 * v_vec) / mu
+    ex, ey, ez = e_vec[0], e_vec[1], e_vec[2]
+    ecc = float(np.linalg.norm(e_vec))
 
     # Semi-major axis from vis-viva
     energy = v_mag**2 / 2.0 - mu / r_mag
@@ -305,51 +299,54 @@ def state_vector_to_elements(
         a = float('inf')
 
     # Inclination
-    inc_rad = math.acos(max(-1.0, min(1.0, hz / h_mag))) if h_mag > 1e-10 else 0.0
+    inc_rad = float(np.arccos(np.clip(hz / h_mag, -1.0, 1.0))) if h_mag > 1e-10 else 0.0
 
     # RAAN
     if n_mag > 1e-10:
-        raan_rad = math.acos(max(-1.0, min(1.0, nx / n_mag)))
+        raan_rad = float(np.arccos(np.clip(nx / n_mag, -1.0, 1.0)))
         if ny < 0:
-            raan_rad = 2.0 * math.pi - raan_rad
+            raan_rad = 2.0 * np.pi - raan_rad
     else:
         raan_rad = 0.0
 
     # Argument of perigee
     if n_mag > 1e-10 and ecc > 1e-10:
-        cos_omega = (nx * ex + ny * ey) / (n_mag * ecc)
-        cos_omega = max(-1.0, min(1.0, cos_omega))
-        omega_rad = math.acos(cos_omega)
+        n_vec_2d = np.array([nx, ny], dtype=np.float64)
+        e_vec_2d = np.array([ex, ey], dtype=np.float64)
+        cos_omega = float(np.dot(n_vec_2d, e_vec_2d)) / (n_mag * ecc)
+        cos_omega = float(np.clip(cos_omega, -1.0, 1.0))
+        omega_rad = float(np.arccos(cos_omega))
         if ez < 0:
-            omega_rad = 2.0 * math.pi - omega_rad
+            omega_rad = 2.0 * np.pi - omega_rad
     else:
         omega_rad = 0.0
 
     # True anomaly
     if ecc > 1e-10:
-        cos_nu = (ex * px + ey * py + ez * pz) / (ecc * r_mag)
-        cos_nu = max(-1.0, min(1.0, cos_nu))
-        nu_rad = math.acos(cos_nu)
+        cos_nu = float(np.dot(e_vec, p_vec)) / (ecc * r_mag)
+        cos_nu = float(np.clip(cos_nu, -1.0, 1.0))
+        nu_rad = float(np.arccos(cos_nu))
         if rdotv < 0:
-            nu_rad = 2.0 * math.pi - nu_rad
+            nu_rad = 2.0 * np.pi - nu_rad
     else:
         # Circular orbit: use argument of latitude
         if n_mag > 1e-10:
-            cos_u = (nx * px + ny * py) / (n_mag * r_mag)
-            cos_u = max(-1.0, min(1.0, cos_u))
-            nu_rad = math.acos(cos_u)
+            n_vec_full = np.array([nx, ny, 0.0], dtype=np.float64)
+            cos_u = float(np.dot(n_vec_full, p_vec)) / (n_mag * r_mag)
+            cos_u = float(np.clip(cos_u, -1.0, 1.0))
+            nu_rad = float(np.arccos(cos_u))
             if pz < 0:
-                nu_rad = 2.0 * math.pi - nu_rad
+                nu_rad = 2.0 * np.pi - nu_rad
         else:
             nu_rad = 0.0
 
     return {
         "semi_major_axis_m": a,
         "eccentricity": ecc,
-        "inclination_deg": math.degrees(inc_rad),
-        "raan_deg": math.degrees(raan_rad),
-        "arg_perigee_deg": math.degrees(omega_rad),
-        "true_anomaly_deg": math.degrees(nu_rad),
+        "inclination_deg": float(np.degrees(inc_rad)),
+        "raan_deg": float(np.degrees(raan_rad)),
+        "arg_perigee_deg": float(np.degrees(omega_rad)),
+        "true_anomaly_deg": float(np.degrees(nu_rad)),
     }
 
 
@@ -366,7 +363,7 @@ def compute_ground_track_repeat(state: OrbitalState) -> GroundTrackRepeat:
         GroundTrackRepeat with revs/day, nearest repeat integers, and drift rate.
     """
     a = state.semi_major_axis_m
-    T = 2.0 * math.pi * math.sqrt(a**3 / _MU)
+    T = 2.0 * np.pi * float(np.sqrt(a**3 / _MU))
     revs_per_day = _SIDEREAL_DAY_S / T
 
     # Continued fraction approximation to find p/q ≈ revs_per_day

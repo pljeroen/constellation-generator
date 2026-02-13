@@ -13,6 +13,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState, propagate_to
 
 
@@ -62,8 +64,8 @@ def cw_propagate_state(
 
     n = n_rad_s
     nt = n * t_s
-    cos_nt = math.cos(nt)
-    sin_nt = math.sin(nt)
+    cos_nt = float(np.cos(nt))
+    sin_nt = float(np.sin(nt))
 
     # Position
     x = (4.0 - 3.0 * cos_nt) * x0 + sin_nt / n * vx0 + 2.0 * (1.0 - cos_nt) / n * vy0
@@ -140,46 +142,36 @@ def compute_relative_state(
     pos_c, vel_c = propagate_to(state_chief, time)
     pos_d, vel_d = propagate_to(state_deputy, time)
 
-    # Chief position and velocity as tuples
-    rc = (pos_c[0], pos_c[1], pos_c[2])
-    vc = (vel_c[0], vel_c[1], vel_c[2])
+    # Chief position and velocity as arrays
+    rc = np.array([pos_c[0], pos_c[1], pos_c[2]], dtype=np.float64)
+    vc = np.array([vel_c[0], vel_c[1], vel_c[2]], dtype=np.float64)
 
     # Build RSW frame (R=radial, S=along-track, W=cross-track)
-    r_mag = math.sqrt(rc[0]**2 + rc[1]**2 + rc[2]**2)
-    r_hat = (rc[0] / r_mag, rc[1] / r_mag, rc[2] / r_mag)
+    r_mag = float(np.linalg.norm(rc))
+    r_hat = rc / r_mag
 
     # W = R × V / |R × V|
-    hx = rc[1] * vc[2] - rc[2] * vc[1]
-    hy = rc[2] * vc[0] - rc[0] * vc[2]
-    hz = rc[0] * vc[1] - rc[1] * vc[0]
-    h_mag = math.sqrt(hx**2 + hy**2 + hz**2)
-    w_hat = (hx / h_mag, hy / h_mag, hz / h_mag)
+    h_vec = np.cross(rc, vc)
+    h_mag = float(np.linalg.norm(h_vec))
+    w_hat = h_vec / h_mag
 
     # S = W × R
-    s_hat = (
-        w_hat[1] * r_hat[2] - w_hat[2] * r_hat[1],
-        w_hat[2] * r_hat[0] - w_hat[0] * r_hat[2],
-        w_hat[0] * r_hat[1] - w_hat[1] * r_hat[0],
-    )
+    s_hat = np.cross(w_hat, r_hat)
 
     # Relative position in ECI
-    dx = pos_d[0] - pos_c[0]
-    dy = pos_d[1] - pos_c[1]
-    dz = pos_d[2] - pos_c[2]
-
-    # Relative velocity in ECI
-    dvx = vel_d[0] - vel_c[0]
-    dvy = vel_d[1] - vel_c[1]
-    dvz = vel_d[2] - vel_c[2]
+    rd = np.array([pos_d[0], pos_d[1], pos_d[2]], dtype=np.float64)
+    vd = np.array([vel_d[0], vel_d[1], vel_d[2]], dtype=np.float64)
+    d_pos = rd - rc
+    d_vel = vd - vc
 
     # Project onto RSW
-    x = dx * r_hat[0] + dy * r_hat[1] + dz * r_hat[2]
-    y = dx * s_hat[0] + dy * s_hat[1] + dz * s_hat[2]
-    z = dx * w_hat[0] + dy * w_hat[1] + dz * w_hat[2]
+    x = float(np.dot(d_pos, r_hat))
+    y = float(np.dot(d_pos, s_hat))
+    z = float(np.dot(d_pos, w_hat))
 
-    vx = dvx * r_hat[0] + dvy * r_hat[1] + dvz * r_hat[2]
-    vy = dvx * s_hat[0] + dvy * s_hat[1] + dvz * s_hat[2]
-    vz = dvx * w_hat[0] + dvy * w_hat[1] + dvz * w_hat[2]
+    vx = float(np.dot(d_vel, r_hat))
+    vy = float(np.dot(d_vel, s_hat))
+    vz = float(np.dot(d_vel, w_hat))
 
     return RelativeState(x=x, y=y, z=z, vx=vx, vy=vy, vz=vz)
 
@@ -206,7 +198,7 @@ def is_passively_safe(
     elapsed = 0.0
     while elapsed <= check_duration_s + 1e-9:
         s = cw_propagate_state(rel_state, n_rad_s, elapsed)
-        dist = math.sqrt(s.x**2 + s.y**2 + s.z**2)
+        dist = float(np.linalg.norm([s.x, s.y, s.z]))
         if dist < min_distance_m:
             return False
         elapsed += step_s

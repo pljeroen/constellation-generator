@@ -13,6 +13,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
+
 from constellation_generator.domain.statistical_analysis import (
     LifetimeSurvivalCurve,
     MissionAvailabilityProfile,

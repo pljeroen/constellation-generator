@@ -13,6 +13,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 
+import numpy as np
+
 from constellation_generator.domain.atmosphere import DragConfig
 from constellation_generator.domain.propagation import OrbitalState
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
@@ -163,7 +165,7 @@ def compute_reliability_weighted_cost(
     for fp in frontier.points:
         alt_km = fp.altitude_km
         a_m = OrbitalConstants.R_EARTH + alt_km * 1000.0
-        n_rad_s = math.sqrt(OrbitalConstants.MU_EARTH / a_m ** 3)
+        n_rad_s = float(np.sqrt(OrbitalConstants.MU_EARTH / a_m ** 3))
 
         # Build a reference OrbitalState at this altitude
         state = OrbitalState(

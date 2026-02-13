@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+import numpy as np
+
 
 def _tri(n: int, m: int) -> int:
     """Triangular index: maps (n, m) to flat array position."""
@@ -270,8 +272,8 @@ class CunninghamGravity:
 
         # V̄/W̄ arrays: flat triangular, indices 0..(n_ext+1)*(n_ext+2)//2
         vw_size = (n_ext + 1) * (n_ext + 2) // 2
-        v = [0.0] * vw_size
-        w = [0.0] * vw_size
+        v = np.zeros(vw_size)
+        w = np.zeros(vw_size)
 
         # Seed: V̄₀₀ = Rₑ/r, W̄₀₀ = 0
         v[0] = re / r

@@ -14,6 +14,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState
 from constellation_generator.domain.atmosphere import DragConfig, semi_major_axis_decay_rate
 from constellation_generator.domain.orbital_mechanics import (
@@ -177,7 +179,7 @@ def compute_maintenance_schedule(
     # Burn frequency
     mission_s = mission_duration_days * 86400.0
     if time_to_tolerance_s > 0:
-        num_burns = max(1, int(math.ceil(mission_s / time_to_tolerance_s)))
+        num_burns = max(1, int(np.ceil(mission_s / time_to_tolerance_s)))
     else:
         num_burns = 1
 

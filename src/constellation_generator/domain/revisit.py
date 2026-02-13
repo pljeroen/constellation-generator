@@ -18,6 +18,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
 from constellation_generator.domain.propagation import OrbitalState, propagate_to
 from constellation_generator.domain.coordinate_frames import (
@@ -106,11 +108,13 @@ def _generate_grid(
         lon = lon_range[0]
         while lon <= lon_range[1] - lon_step_deg + 1e-9:
             ecef_x, ecef_y, ecef_z = geodetic_to_ecef(lat, lon, 0.0)
-            mag = math.sqrt(ecef_x**2 + ecef_y**2 + ecef_z**2)
+            ecef_vec = np.array([ecef_x, ecef_y, ecef_z])
+            mag = float(np.linalg.norm(ecef_vec))
+            unit = ecef_vec / mag
             grid.append(GridPoint(
                 lat_deg=lat, lon_deg=lon,
                 ecef_x=ecef_x, ecef_y=ecef_y, ecef_z=ecef_z,
-                unit_x=ecef_x / mag, unit_y=ecef_y / mag, unit_z=ecef_z / mag,
+                unit_x=float(unit[0]), unit_y=float(unit[1]), unit_z=float(unit[2]),
             ))
             lon += lon_step_deg
         lat += lat_step_deg

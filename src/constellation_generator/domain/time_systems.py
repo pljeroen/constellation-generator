@@ -13,6 +13,8 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
 # --------------------------------------------------------------------------- #
 # Constants
 # --------------------------------------------------------------------------- #
@@ -200,12 +202,12 @@ def _tdb_minus_tt(t_tt_centuries: float) -> float:
         Julian centuries of TT from J2000.0.
     """
     # Mean anomaly of Earth (radians)
-    M_E = math.radians(357.5277233 + 35999.160503 * t_tt_centuries)
+    M_E = float(np.radians(357.5277233 + 35999.160503 * t_tt_centuries))
     # Mean longitude of Jupiter (simplified)
-    L_J = math.radians(246.11 + 3034.906 * t_tt_centuries)
+    L_J = float(np.radians(246.11 + 3034.906 * t_tt_centuries))
 
-    return (0.001657 * math.sin(M_E)
-            + 0.000022 * math.sin(L_J - M_E))
+    return float(0.001657 * np.sin(M_E)
+            + 0.000022 * np.sin(L_J - M_E))
 
 
 # --------------------------------------------------------------------------- #

@@ -14,6 +14,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
 from constellation_generator.domain.propagation import OrbitalState, propagate_to
 from constellation_generator.domain.coordinate_frames import (
@@ -80,20 +82,20 @@ def compute_l_shell(lat_deg: float, lon_deg: float, alt_km: float) -> float:
     Returns:
         L-shell parameter (dimensionless).
     """
-    lat_r = math.radians(lat_deg)
-    lon_r = math.radians(lon_deg)
-    tilt_r = math.radians(_DIPOLE_TILT_DEG)
-    ref_lon_r = math.radians(_DIPOLE_LON_DEG)
+    lat_r = np.radians(lat_deg)
+    lon_r = np.radians(lon_deg)
+    tilt_r = np.radians(_DIPOLE_TILT_DEG)
+    ref_lon_r = np.radians(_DIPOLE_LON_DEG)
 
     # Geomagnetic latitude
-    sin_lam_m = (
-        math.sin(lat_r) * math.cos(tilt_r)
-        + math.cos(lat_r) * math.sin(tilt_r) * math.cos(lon_r - ref_lon_r)
+    sin_lam_m = float(
+        np.sin(lat_r) * np.cos(tilt_r)
+        + np.cos(lat_r) * np.sin(tilt_r) * np.cos(lon_r - ref_lon_r)
     )
     sin_lam_m = max(-1.0, min(1.0, sin_lam_m))
-    lam_m = math.asin(sin_lam_m)
+    lam_m = float(np.arcsin(sin_lam_m))
 
-    cos_lam_m = math.cos(lam_m)
+    cos_lam_m = float(np.cos(lam_m))
     if abs(cos_lam_m) < 1e-10:
         cos_lam_m = 1e-10
 
@@ -136,10 +138,10 @@ def compute_radiation_environment(
         )
 
     # Proton flux: inner belt, peaks at L≈1.5
-    f_proton = _F_PROTON_0 * math.exp(-((l_val - 1.5) / 0.4) ** 2)
+    f_proton = float(_F_PROTON_0 * np.exp(-((l_val - 1.5) / 0.4) ** 2))
 
     # Electron flux: outer belt, peaks at L≈4.5
-    f_electron = _F_ELECTRON_0 * math.exp(-((l_val - 4.5) / 1.5) ** 2)
+    f_electron = float(_F_ELECTRON_0 * np.exp(-((l_val - 4.5) / 1.5) ** 2))
 
     # Total dose rate
     dose_rate = _C_PROTON * f_proton + _C_ELECTRON * f_electron
@@ -179,7 +181,7 @@ def compute_orbit_radiation_summary(
     Returns:
         OrbitRadiationSummary with mean/max dose, annual dose, SAA fraction.
     """
-    T = 2.0 * math.pi / state.mean_motion_rad_s
+    T = 2.0 * np.pi / state.mean_motion_rad_s
     dt = T / num_points
 
     dose_rates: list[float] = []

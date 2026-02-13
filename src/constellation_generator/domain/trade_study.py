@@ -14,6 +14,8 @@ No external dependencies — only stdlib dataclasses/datetime.
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
+
 from constellation_generator.domain.constellation import (
     ShellConfig,
     generate_walker_shell,

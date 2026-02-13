@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable
 
+import numpy as np
+
 from constellation_generator.domain.numerical_propagation import (
     ForceModel,
     PropagationStep,
@@ -123,47 +125,52 @@ def _dp_full_step(
         derivative at y_new.
     """
     n = len(y)
+    y_arr = np.array(y)
 
     # Stage 1 (FSAL: reuse from previous step if available)
     k1 = k1_in if k1_in is not None else deriv_fn(t, y)
+    k1_arr = np.array(k1)
 
     # Stage 2
     a21 = DORMAND_PRINCE_A[1][0]
-    y2 = tuple(y[j] + h * a21 * k1[j] for j in range(n))
+    y2 = tuple((y_arr + h * a21 * k1_arr).tolist())
     k2 = deriv_fn(t + DORMAND_PRINCE_C[1] * h, y2)
+    k2_arr = np.array(k2)
 
     # Stage 3
     a31, a32 = DORMAND_PRINCE_A[2]
-    y3 = tuple(y[j] + h * (a31 * k1[j] + a32 * k2[j]) for j in range(n))
+    y3 = tuple((y_arr + h * (a31 * k1_arr + a32 * k2_arr)).tolist())
     k3 = deriv_fn(t + DORMAND_PRINCE_C[2] * h, y3)
+    k3_arr = np.array(k3)
 
     # Stage 4
     a41, a42, a43 = DORMAND_PRINCE_A[3]
-    y4 = tuple(y[j] + h * (a41 * k1[j] + a42 * k2[j] + a43 * k3[j]) for j in range(n))
+    y4 = tuple((y_arr + h * (a41 * k1_arr + a42 * k2_arr + a43 * k3_arr)).tolist())
     k4 = deriv_fn(t + DORMAND_PRINCE_C[3] * h, y4)
+    k4_arr = np.array(k4)
 
     # Stage 5
     a51, a52, a53, a54 = DORMAND_PRINCE_A[4]
-    y5 = tuple(y[j] + h * (a51 * k1[j] + a52 * k2[j] + a53 * k3[j] + a54 * k4[j]) for j in range(n))
+    y5 = tuple((y_arr + h * (a51 * k1_arr + a52 * k2_arr + a53 * k3_arr + a54 * k4_arr)).tolist())
     k5 = deriv_fn(t + DORMAND_PRINCE_C[4] * h, y5)
+    k5_arr = np.array(k5)
 
     # Stage 6
     a61, a62, a63, a64, a65 = DORMAND_PRINCE_A[5]
-    y6 = tuple(y[j] + h * (a61 * k1[j] + a62 * k2[j] + a63 * k3[j] + a64 * k4[j] + a65 * k5[j]) for j in range(n))
+    y6 = tuple((y_arr + h * (a61 * k1_arr + a62 * k2_arr + a63 * k3_arr + a64 * k4_arr + a65 * k5_arr)).tolist())
     k6 = deriv_fn(t + DORMAND_PRINCE_C[5] * h, y6)
+    k6_arr = np.array(k6)
 
     # 4th-order solution (b4 weights; b4[1]=0 and b4[6]=0 so skip those terms)
     b4_0, _, b4_2, b4_3, b4_4, b4_5, _ = DORMAND_PRINCE_B4
-    y_new = tuple(
-        y[j] + h * (
-            b4_0 * k1[j]
-            + b4_2 * k3[j]
-            + b4_3 * k4[j]
-            + b4_4 * k5[j]
-            + b4_5 * k6[j]
-        )
-        for j in range(n)
+    y_new_arr = y_arr + h * (
+        b4_0 * k1_arr
+        + b4_2 * k3_arr
+        + b4_3 * k4_arr
+        + b4_4 * k5_arr
+        + b4_5 * k6_arr
     )
+    y_new = tuple(float(x) for x in y_new_arr)
 
     # Stage 7 (FSAL: evaluate derivative at the 4th-order solution)
     k7 = deriv_fn(t + h, y_new)
@@ -213,22 +220,17 @@ def _error_norm(
     where e_j = h * sum_i(e_i * k_i_j) and sc_j = atol + rtol * max(|y_j|, |y_new_j|).
     """
     n = len(y)
-    e0, e1, e2, e3, e4, e5, e6 = _DORMAND_PRINCE_E
-    sum_sq = 0.0
-    for j in range(n):
-        e_j = h * (
-            e0 * k_stages[0][j]
-            + e1 * k_stages[1][j]
-            + e2 * k_stages[2][j]
-            + e3 * k_stages[3][j]
-            + e4 * k_stages[4][j]
-            + e5 * k_stages[5][j]
-            + e6 * k_stages[6][j]
-        )
-        sc = atol + rtol * max(abs(y[j]), abs(y_new[j]))
-        sum_sq += (e_j / sc) ** 2
+    e_weights = np.array(_DORMAND_PRINCE_E)
+    k_arr = np.array(k_stages)  # shape (7, n)
+    y_arr = np.array(y)
+    y_new_arr = np.array(y_new)
 
-    return math.sqrt(sum_sq / n)
+    # e_j = h * sum_i(e_i * k_i_j) for each j
+    e_vec = h * (e_weights @ k_arr)  # shape (n,)
+    sc_vec = atol + rtol * np.maximum(np.abs(y_arr), np.abs(y_new_arr))
+    sum_sq = float(np.sum((e_vec / sc_vec) ** 2))
+
+    return float(np.sqrt(sum_sq / n))
 
 
 # --- Step-size control ---
@@ -261,22 +263,25 @@ def _hermite_interpolate(
     theta = (t_eval - t0) / h
     theta2 = theta * theta
     theta3 = theta2 * theta
-    n = len(y0)
 
     h00 = 2.0 * theta3 - 3.0 * theta2 + 1.0
     h10 = theta3 - 2.0 * theta2 + theta
     h01 = -2.0 * theta3 + 3.0 * theta2
     h11 = theta3 - theta2
 
-    return tuple(
-        h00 * y0[j] + h10 * h * f0[j] + h01 * y1[j] + h11 * h * f1[j]
-        for j in range(n)
-    )
+    y0_arr = np.array(y0)
+    f0_arr = np.array(f0)
+    y1_arr = np.array(y1)
+    f1_arr = np.array(f1)
+
+    result = h00 * y0_arr + h10 * h * f0_arr + h01 * y1_arr + h11 * h * f1_arr
+    return tuple(float(x) for x in result)
 
 
 def _scale_deriv(k: tuple[float, ...], sign: float) -> tuple[float, ...]:
     """Scale derivative for interpolation in physical time direction."""
-    return tuple(sign * ki for ki in k)
+    result = sign * np.array(k)
+    return tuple(float(x) for x in result)
 
 
 # --- Main adaptive propagation function ---

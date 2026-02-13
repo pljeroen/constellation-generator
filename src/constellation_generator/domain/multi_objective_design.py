@@ -13,6 +13,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState, propagate_ecef_to
 from constellation_generator.domain.atmosphere import DragConfig
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
@@ -98,7 +100,7 @@ def compute_pareto_surface(
     for fp in frontier.points:
         alt_km = fp.altitude_km
         a_m = OrbitalConstants.R_EARTH + alt_km * 1000.0
-        n_rad_s = math.sqrt(OrbitalConstants.MU_EARTH / a_m ** 3)
+        n_rad_s = float(np.sqrt(OrbitalConstants.MU_EARTH / a_m ** 3))
 
         # Controllability
         ctrl = compute_cw_controllability(n_rad_s, control_duration_s)
@@ -110,9 +112,9 @@ def compute_pareto_surface(
         # Information efficiency: build constellation at this altitude
         # and compute positioning information
         states_at_alt = []
-        raan_step = 360.0 / max(1, int(math.sqrt(num_sats)))
-        ta_step = 360.0 / max(1, num_sats // max(1, int(math.sqrt(num_sats))))
-        n_planes = max(1, int(math.sqrt(num_sats)))
+        raan_step = 360.0 / max(1, int(np.sqrt(num_sats)))
+        ta_step = 360.0 / max(1, num_sats // max(1, int(np.sqrt(num_sats))))
+        n_planes = max(1, int(np.sqrt(num_sats)))
         n_per_plane = max(1, num_sats // n_planes)
 
         for p in range(n_planes):
@@ -120,9 +122,9 @@ def compute_pareto_surface(
                 states_at_alt.append(OrbitalState(
                     semi_major_axis_m=a_m, eccentricity=0.0,
                     inclination_rad=inclination_rad,
-                    raan_rad=math.radians(p * 360.0 / n_planes),
+                    raan_rad=float(np.radians(p * 360.0 / n_planes)),
                     arg_perigee_rad=0.0,
-                    true_anomaly_rad=math.radians(s * 360.0 / n_per_plane),
+                    true_anomaly_rad=float(np.radians(s * 360.0 / n_per_plane)),
                     mean_motion_rad_s=n_rad_s,
                     reference_epoch=epoch,
                 ))

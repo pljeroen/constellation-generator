@@ -13,6 +13,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState, propagate_to
 from constellation_generator.domain.link_budget import LinkConfig
 from constellation_generator.domain.graph_analysis import (
@@ -222,10 +224,8 @@ def compute_proximity_spectrum(
         t = epoch + timedelta(seconds=i * step_s)
         pos_a, _ = propagate_to(states[idx_a], t)
         pos_b, _ = propagate_to(states[idx_b], t)
-        dx = pos_a[0] - pos_b[0]
-        dy = pos_a[1] - pos_b[1]
-        dz = pos_a[2] - pos_b[2]
-        dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+        dp = np.array(pos_a) - np.array(pos_b)
+        dist = float(np.linalg.norm(dp))
         distances.append(dist)
 
     sample_rate = 1.0 / step_s

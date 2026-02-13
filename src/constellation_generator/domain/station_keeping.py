@@ -13,6 +13,8 @@ No external dependencies — only stdlib math/dataclasses.
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 from constellation_generator.domain.orbital_mechanics import OrbitalConstants
 from constellation_generator.domain.atmosphere import (
     AtmosphereModel,
@@ -66,7 +68,7 @@ def drag_compensation_dv_per_year(
         Delta-V in m/s per year.
     """
     a = OrbitalConstants.R_EARTH + altitude_km * 1000.0
-    n = math.sqrt(OrbitalConstants.MU_EARTH / a ** 3)
+    n = float(np.sqrt(OrbitalConstants.MU_EARTH / a ** 3))
     decay_kwargs: dict = {}
     if atmosphere_model is not None:
         decay_kwargs["model"] = atmosphere_model
@@ -94,9 +96,9 @@ def plane_maintenance_dv_per_year(
         Delta-V in m/s per year.
     """
     a = OrbitalConstants.R_EARTH + altitude_km * 1000.0
-    v = math.sqrt(OrbitalConstants.MU_EARTH / a)
-    di_rad = math.radians(delta_inclination_deg)
-    return 2.0 * v * math.sin(di_rad / 2.0)
+    v = float(np.sqrt(OrbitalConstants.MU_EARTH / a))
+    di_rad = float(np.radians(delta_inclination_deg))
+    return 2.0 * v * float(np.sin(di_rad / 2.0))
 
 
 def tsiolkovsky_dv(
@@ -126,7 +128,7 @@ def tsiolkovsky_dv(
     if propellant_mass_kg == 0.0:
         return 0.0
     m0 = dry_mass_kg + propellant_mass_kg
-    return isp_s * _G0 * math.log(m0 / dry_mass_kg)
+    return isp_s * _G0 * float(np.log(m0 / dry_mass_kg))
 
 
 def propellant_mass_for_dv(
@@ -146,7 +148,7 @@ def propellant_mass_for_dv(
     Returns:
         Propellant mass in kg.
     """
-    return dry_mass_kg * (math.exp(dv_ms / (isp_s * _G0)) - 1.0)
+    return dry_mass_kg * (float(np.exp(dv_ms / (isp_s * _G0))) - 1.0)
 
 
 def compute_station_keeping_budget(

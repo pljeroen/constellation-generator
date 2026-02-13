@@ -13,6 +13,8 @@ No external dependencies — only stdlib + domain modules.
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 from constellation_generator.domain.relative_motion import RelativeState, cw_propagate_state
 from constellation_generator.domain.linalg import (
     mat_zeros,

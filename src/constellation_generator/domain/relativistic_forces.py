@@ -15,6 +15,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+import numpy as np
+
 # --- Physical constants ---
 
 _GM_EARTH: float = 3.986004418e14  # m³/s² (Earth gravitational parameter)
@@ -51,38 +53,38 @@ def _sun_position_approx(dt: datetime) -> tuple[float, float, float]:
 
     # Mean anomaly of Sun (degrees)
     M_deg = (357.5291092 + 35999.0502909 * T) % 360.0
-    M_rad = math.radians(M_deg)
+    M_rad = float(np.radians(M_deg))
 
     # Equation of center (degrees)
     C_deg = (
-        (1.9146 - 0.004817 * T) * math.sin(M_rad)
-        + 0.019993 * math.sin(2.0 * M_rad)
+        (1.9146 - 0.004817 * T) * float(np.sin(M_rad))
+        + 0.019993 * float(np.sin(2.0 * M_rad))
     )
 
     # Sun's mean longitude (degrees)
     L0_deg = (280.46646 + 36000.76983 * T) % 360.0
 
     # Sun's true longitude (radians)
-    sun_lon = math.radians((L0_deg + C_deg) % 360.0)
+    sun_lon = float(np.radians((L0_deg + C_deg) % 360.0))
 
     # Obliquity of ecliptic (radians)
-    eps = math.radians(23.439291 - 0.0130042 * T)
+    eps = float(np.radians(23.439291 - 0.0130042 * T))
 
     # Orbital eccentricity
     e = 0.016708634 - 0.000042037 * T
 
     # True anomaly
-    nu = M_rad + math.radians(C_deg)
+    nu = M_rad + float(np.radians(C_deg))
 
     # Sun–Earth distance (meters)
-    r_au = 1.000001018 * (1.0 - e * e) / (1.0 + e * math.cos(nu))
+    r_au = 1.000001018 * (1.0 - e * e) / (1.0 + e * float(np.cos(nu)))
     r = r_au * _AU
 
     # ECI coordinates (equatorial frame via obliquity rotation)
-    cos_lon = math.cos(sun_lon)
-    sin_lon = math.sin(sun_lon)
-    cos_eps = math.cos(eps)
-    sin_eps = math.sin(eps)
+    cos_lon = float(np.cos(sun_lon))
+    sin_lon = float(np.sin(sun_lon))
+    cos_eps = float(np.cos(eps))
+    sin_eps = float(np.sin(eps))
 
     x = r * cos_lon
     y = r * sin_lon * cos_eps
@@ -120,13 +122,13 @@ class SchwarzschildForce:
         position: tuple[float, float, float],
         velocity: tuple[float, float, float],
     ) -> tuple[float, float, float]:
-        x, y, z = position
-        vx, vy, vz = velocity
+        pos = np.array(position)
+        vel = np.array(velocity)
 
-        r_sq = x * x + y * y + z * z
-        r = math.sqrt(r_sq)
-        v_sq = vx * vx + vy * vy + vz * vz
-        r_dot_v = x * vx + y * vy + z * vz
+        r_sq = float(np.dot(pos, pos))
+        r = float(np.sqrt(r_sq))
+        v_sq = float(np.dot(vel, vel))
+        r_dot_v = float(np.dot(pos, vel))
 
         c2 = self.c * self.c
         coeff = self.gm / (c2 * r * r_sq)
@@ -135,11 +137,9 @@ class SchwarzschildForce:
         pos_factor = 4.0 * gm_over_r - v_sq
         vel_factor = 4.0 * r_dot_v
 
-        ax = coeff * (pos_factor * x + vel_factor * vx)
-        ay = coeff * (pos_factor * y + vel_factor * vy)
-        az = coeff * (pos_factor * z + vel_factor * vz)
+        a = coeff * (pos_factor * pos + vel_factor * vel)
 
-        return (ax, ay, az)
+        return (float(a[0]), float(a[1]), float(a[2]))
 
 
 @dataclass(frozen=True)
@@ -168,35 +168,31 @@ class LenseThirringForce:
         position: tuple[float, float, float],
         velocity: tuple[float, float, float],
     ) -> tuple[float, float, float]:
-        x, y, z = position
-        vx, vy, vz = velocity
+        pos = np.array(position)
+        vel = np.array(velocity)
 
-        r_sq = x * x + y * y + z * z
-        r = math.sqrt(r_sq)
+        r_sq = float(np.dot(pos, pos))
+        r = float(np.sqrt(r_sq))
 
         # J = (0, 0, J_EARTH) — Earth spin angular momentum along z-axis.
+        J = np.array([0.0, 0.0, self.j_earth])
+
         # r · J = z * J_EARTH
-        r_dot_J = z * self.j_earth
+        r_dot_J = float(np.dot(pos, J))
 
         # r × v
-        rxv_x = y * vz - z * vy
-        rxv_y = z * vx - x * vz
-        rxv_z = x * vy - y * vx
+        rxv = np.cross(pos, vel)
 
-        # v × J  (J only has z-component)
-        vxJ_x = vy * self.j_earth
-        vxJ_y = -vx * self.j_earth
-        vxJ_z = 0.0
+        # v × J
+        vxJ = np.cross(vel, J)
 
         c2 = self.c * self.c
         coeff = 2.0 * self.g_newton / (c2 * r * r_sq)
         inner_coeff = 3.0 * r_dot_J / r_sq
 
-        ax = coeff * (inner_coeff * rxv_x + vxJ_x)
-        ay = coeff * (inner_coeff * rxv_y + vxJ_y)
-        az = coeff * (inner_coeff * rxv_z + vxJ_z)
+        a = coeff * (inner_coeff * rxv + vxJ)
 
-        return (ax, ay, az)
+        return (float(a[0]), float(a[1]), float(a[2]))
 
 
 @dataclass(frozen=True)
@@ -225,36 +221,30 @@ class DeSitterForce:
         position: tuple[float, float, float],
         velocity: tuple[float, float, float],
     ) -> tuple[float, float, float]:
-        vx, vy, vz = velocity
+        vel_arr = np.array(velocity)
 
         # Sun position (Earth-to-Sun vector) at epoch
-        sun = _sun_position_approx(epoch)
-        sx, sy, sz = sun
-        R_sq = sx * sx + sy * sy + sz * sz
-        R = math.sqrt(R_sq)
+        sun = np.array(_sun_position_approx(epoch))
+        R_sq = float(np.dot(sun, sun))
+        R = float(np.sqrt(R_sq))
 
         # Earth heliocentric velocity via finite difference.
         # Earth velocity = -d(Sun_pos_ECI)/dt
         dt_s = 3600.0  # 1 hour step
         epoch2 = epoch + timedelta(seconds=dt_s)
-        sun2 = _sun_position_approx(epoch2)
+        sun2 = np.array(_sun_position_approx(epoch2))
 
-        Ve_x = -(sun2[0] - sun[0]) / dt_s
-        Ve_y = -(sun2[1] - sun[1]) / dt_s
-        Ve_z = -(sun2[2] - sun[2]) / dt_s
+        Ve = -(sun2 - sun) / dt_s
 
         # R_sun × v_sat
-        Rxv_x = sy * vz - sz * vy
-        Rxv_y = sz * vx - sx * vz
-        Rxv_z = sx * vy - sy * vx
+        Rxv = np.cross(sun, vel_arr)
 
         # V_E × (R_sun × v_sat)
-        cross_x = Ve_y * Rxv_z - Ve_z * Rxv_y
-        cross_y = Ve_z * Rxv_x - Ve_x * Rxv_z
-        cross_z = Ve_x * Rxv_y - Ve_y * Rxv_x
+        cross = np.cross(Ve, Rxv)
 
         c2 = self.c * self.c
         R_cubed = R * R_sq
         coeff = -3.0 * self.gm_sun / (2.0 * c2 * R_cubed)
 
-        return (coeff * cross_x, coeff * cross_y, coeff * cross_z)
+        a = coeff * cross
+        return (float(a[0]), float(a[1]), float(a[2]))

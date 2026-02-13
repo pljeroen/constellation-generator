@@ -12,6 +12,8 @@ No external dependencies — only stdlib + domain modules.
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 from constellation_generator.domain.linalg import naive_dft
 from constellation_generator.domain.statistical_analysis import MissionAvailabilityProfile
 from constellation_generator.domain.communication_analysis import NetworkCapacityTimeline
@@ -72,13 +74,15 @@ def compute_signal_coherence(signal: list, sample_rate_hz: float) -> SignalCoher
         )
 
     # Time-domain energy
-    time_energy = sum(x * x for x in signal) / n
+    signal_arr = np.array(signal)
+    time_energy = float(np.dot(signal_arr, signal_arr)) / n
 
     # Frequency-domain via DFT
     dft = naive_dft(signal, sample_rate_hz)
 
     # Frequency-domain energy (Parseval's: sum of |X[k]|^2 = sum of |x[j]|^2 / N)
-    freq_energy = sum(m * m for m in dft.magnitudes)
+    mags_arr = np.array(dft.magnitudes)
+    freq_energy = float(np.dot(mags_arr, mags_arr))
 
     parseval_ratio = freq_energy / time_energy if time_energy > 1e-15 else 1.0
 
@@ -101,10 +105,11 @@ def compute_signal_coherence(signal: list, sample_rate_hz: float) -> SignalCoher
             dominant_power_fraction=0.0, is_narrowband=False,
         )
 
-    max_idx = max(range(len(mags)), key=lambda i: mags[i])
+    mags_np = np.array(mags)
+    max_idx = int(np.argmax(mags_np))
     dominant_freq = freqs[max_idx]
     dominant_power = mags[max_idx] ** 2
-    total_power = sum(m * m for m in mags)
+    total_power = float(np.dot(mags_np, mags_np))
     power_fraction = dominant_power / total_power if total_power > 1e-15 else 0.0
 
     is_narrowband = power_fraction > 0.5
@@ -180,7 +185,7 @@ def compute_spectral_cross_correlation(
         )
 
     # Dominant frequency = where signal_a has max power
-    dom_idx = max(range(len(powers_a)), key=lambda i: powers_a[i])
+    dom_idx = int(np.argmax(powers_a))
     dom_freq = dft_a.frequencies_hz[dom_idx + 1]
 
     mean_coh = sum(coherences) / len(coherences) if coherences else 0.0
@@ -279,14 +284,15 @@ def compute_network_capacity_spectrum(
 
     half_n = n // 2
     freqs = list(dft.frequencies_hz[:half_n])
-    powers = [m ** 2 for m in dft.magnitudes[:half_n]]
+    mags_half = np.array(dft.magnitudes[:half_n])
+    powers = list(mags_half ** 2)
 
     # Skip DC, find dominant
     if half_n > 1:
         non_dc_powers = powers[1:]
         non_dc_freqs = freqs[1:]
         if non_dc_powers:
-            dom_idx = max(range(len(non_dc_powers)), key=lambda i: non_dc_powers[i])
+            dom_idx = int(np.argmax(non_dc_powers))
             dom_freq = non_dc_freqs[dom_idx]
         else:
             dom_freq = 0.0

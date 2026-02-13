@@ -166,6 +166,6 @@ class TestSpectralTopologyPurity:
                 else:
                     for alias in node.names:
                         top = alias.name.split(".")[0]
-                assert top in {"math", "dataclasses", "datetime", "typing", "enum", "constellation_generator", "__future__"}, (
+                assert top in {"math", "dataclasses", "datetime", "typing", "enum", "numpy", "constellation_generator", "__future__"}, (
                     f"Forbidden import: {top}"
                 )

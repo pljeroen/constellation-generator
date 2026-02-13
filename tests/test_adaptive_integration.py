@@ -727,14 +727,14 @@ class TestDomainPurity:
                 for alias in node.names:
                     mod = alias.name.split(".")[0]
                     assert mod in (
-                        "math", "dataclasses", "datetime", "typing",
+                        "math", "numpy", "dataclasses", "datetime", "typing",
                         "constellation_generator",
                     ), f"External import: {alias.name}"
             elif isinstance(node, ast.ImportFrom):
                 if node.module:
                     mod = node.module.split(".")[0]
                     assert mod in (
-                        "math", "dataclasses", "datetime", "typing",
+                        "math", "numpy", "dataclasses", "datetime", "typing",
                         "constellation_generator",
                     ), f"External import from: {node.module}"
 

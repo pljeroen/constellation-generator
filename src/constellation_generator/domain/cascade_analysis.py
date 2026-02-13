@@ -13,6 +13,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState
 from constellation_generator.domain.link_budget import LinkConfig
 from constellation_generator.domain.atmosphere import DragConfig
@@ -71,7 +73,7 @@ def compute_cascade_indicator(
     dft_result = naive_dft(fiedler_signal, sample_rate)
 
     # Orbital frequency
-    orbital_freq = states[0].mean_motion_rad_s / (2.0 * math.pi)
+    orbital_freq = states[0].mean_motion_rad_s / (2.0 * np.pi)
 
     # Find spectral power at/near orbital frequency
     spectral_at_orbital = 0.0

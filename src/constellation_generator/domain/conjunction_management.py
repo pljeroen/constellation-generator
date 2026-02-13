@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState, propagate_to
 from constellation_generator.domain.relative_motion import (
     RelativeState,
@@ -90,7 +92,7 @@ def triage_conjunction(
     safe = is_passively_safe(rel, n, min_safe_distance_m, check_duration)
 
     # Compute distance at TCA
-    dist = math.sqrt(rel.x**2 + rel.y**2 + rel.z**2)
+    dist = float(np.linalg.norm([rel.x, rel.y, rel.z]))
 
     if dist > min_safe_distance_m and safe:
         action = ConjunctionAction.NO_ACTION
@@ -146,7 +148,7 @@ def compute_avoidance_maneuver(
     # dx = 2*dVy*(1-(-1))/n = 4*dVy/n
     # dy = dVy*(4*0/n - 3*T/2) = -3*dVy*T/2
     # |displacement| ≈ sqrt((4/n)^2 + (3T/2)^2) * |dVy|
-    factor = math.sqrt((4.0 / n)**2 + (1.5 * T)**2)
+    factor = float(np.sqrt((4.0 / n)**2 + (1.5 * T)**2))
 
     if factor < 1e-10:
         factor = 1.0

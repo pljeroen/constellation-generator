@@ -10,6 +10,8 @@ No external dependencies — only stdlib math/dataclasses.
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 from .orbital_mechanics import OrbitalConstants
 
 
@@ -58,7 +60,7 @@ def parse_omm_record(record: dict) -> OrbitalElements:
     if mean_motion_rpd <= 0:
         raise ValueError(f"Mean motion must be positive, got {mean_motion_rpd}")
 
-    n_rad_s = mean_motion_rpd * 2.0 * math.pi / 86400.0
+    n_rad_s = mean_motion_rpd * 2.0 * np.pi / 86400.0
     a_m = (OrbitalConstants.MU_EARTH / (n_rad_s ** 2)) ** (1.0 / 3.0)
 
     return OrbitalElements(

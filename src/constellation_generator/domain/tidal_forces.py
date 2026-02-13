@@ -29,6 +29,8 @@ import pathlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import numpy as np
+
 # --- Physical constants ---
 
 _GM_EARTH: float = 3.986004418e14  # m³/s² (Earth gravitational parameter)
@@ -157,25 +159,28 @@ def _moon_position_approx(dt: datetime) -> tuple[float, float, float]:
 
 def _dot(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
     """Dot product of two 3-vectors."""
-    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+    return float(np.dot(a, b))
 
 
 def _mag(v: tuple[float, float, float]) -> float:
     """Magnitude of a 3-vector."""
-    return math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+    return float(np.linalg.norm(v))
 
 
 def _scale(s: float, v: tuple[float, float, float]) -> tuple[float, float, float]:
     """Scalar multiply a 3-vector."""
-    return (s * v[0], s * v[1], s * v[2])
+    result = s * np.array(v)
+    return (float(result[0]), float(result[1]), float(result[2]))
 
 
 def _unit(v: tuple[float, float, float]) -> tuple[float, float, float]:
     """Unit vector."""
-    m = _mag(v)
+    arr = np.array(v)
+    m = float(np.linalg.norm(arr))
     if m == 0.0:
         return (0.0, 0.0, 0.0)
-    return (v[0] / m, v[1] / m, v[2] / m)
+    result = arr / m
+    return (float(result[0]), float(result[1]), float(result[2]))
 
 
 # --- Force models ---
@@ -217,14 +222,14 @@ class SolidTideForce:
         position: tuple[float, float, float],
         velocity: tuple[float, float, float],
     ) -> tuple[float, float, float]:
-        r_vec = position
-        r = _mag(r_vec)
+        r_vec = np.array(position)
+        r = float(np.linalg.norm(r_vec))
         if r < 1.0:
             return (0.0, 0.0, 0.0)
 
-        r_hat = _unit(r_vec)
+        r_hat = r_vec / r
 
-        ax, ay, az = 0.0, 0.0, 0.0
+        acc = np.zeros(3)
 
         # Compute tidal acceleration from each perturbing body
         bodies = [
@@ -236,12 +241,13 @@ class SolidTideForce:
         degree_factor = 1.0 / 5.0  # 1/(2*2+1) for degree n=2
 
         for gm_j, d_vec in bodies:
-            d = _mag(d_vec)
+            d_arr = np.array(d_vec)
+            d = float(np.linalg.norm(d_arr))
             if d < 1.0:
                 continue
 
-            d_hat = _unit(d_vec)
-            cos_psi = _dot(r_hat, d_hat)
+            d_hat = d_arr / d
+            cos_psi = float(np.dot(r_hat, d_hat))
 
             # Coefficient: k2/(2n+1) * GM_j * R_E^5 / (d^3 * r^4)
             factor = (
@@ -253,11 +259,9 @@ class SolidTideForce:
             radial_coeff = -(15.0 * cos_psi * cos_psi - 3.0) / 2.0
             cross_coeff = 3.0 * cos_psi
 
-            ax += factor * (radial_coeff * r_hat[0] + cross_coeff * d_hat[0])
-            ay += factor * (radial_coeff * r_hat[1] + cross_coeff * d_hat[1])
-            az += factor * (radial_coeff * r_hat[2] + cross_coeff * d_hat[2])
+            acc += factor * (radial_coeff * r_hat + cross_coeff * d_hat)
 
-        return (ax, ay, az)
+        return (float(acc[0]), float(acc[1]), float(acc[2]))
 
 
 class OceanTideForce:
@@ -295,8 +299,8 @@ class OceanTideForce:
         position: tuple[float, float, float],
         velocity: tuple[float, float, float],
     ) -> tuple[float, float, float]:
-        r_vec = position
-        r = _mag(r_vec)
+        r_vec = np.array(position)
+        r = float(np.linalg.norm(r_vec))
         if r < 1.0:
             return (0.0, 0.0, 0.0)
 
@@ -318,10 +322,16 @@ class OceanTideForce:
         cos_g = math.cos(gmst)
         sin_g = math.sin(gmst)
 
-        # Rotate ECI -> ECEF
-        x_ecef = cos_g * r_vec[0] + sin_g * r_vec[1]
-        y_ecef = -sin_g * r_vec[0] + cos_g * r_vec[1]
-        z_ecef = r_vec[2]
+        # Rotate ECI -> ECEF using rotation matrix
+        rot_eci_to_ecef = np.array([
+            [cos_g, sin_g, 0.0],
+            [-sin_g, cos_g, 0.0],
+            [0.0, 0.0, 1.0],
+        ])
+        r_ecef = rot_eci_to_ecef @ r_vec
+        x_ecef = float(r_ecef[0])
+        y_ecef = float(r_ecef[1])
+        z_ecef = float(r_ecef[2])
 
         # Spherical coordinates from ECEF
         r_xy = math.sqrt(x_ecef * x_ecef + y_ecef * y_ecef)
@@ -332,8 +342,8 @@ class OceanTideForce:
         cos_phi = math.cos(phi)
 
         # Accumulate degree-2 harmonic corrections from all constituents
-        dC = [[0.0, 0.0, 0.0] for _ in range(3)]  # dC[n][m] for n=0,1,2
-        dS = [[0.0, 0.0, 0.0] for _ in range(3)]
+        dC = np.zeros((3, 3))  # dC[n][m] for n=0,1,2
+        dS = np.zeros((3, 3))
 
         for constituent in self._constituents:
             period_hours = constituent["period_hours"]
@@ -349,8 +359,8 @@ class OceanTideForce:
                 Cm = corr["Cm"]
                 Sm = corr["Sm"]
 
-                dC[n][m] += Cp * cos_theta + Cm * sin_theta
-                dS[n][m] += Sp * cos_theta + Sm * sin_theta
+                dC[n, m] += Cp * cos_theta + Cm * sin_theta
+                dS[n, m] += Sp * cos_theta + Sm * sin_theta
 
         # Compute degree-2 geopotential gradient in spherical coordinates
         # The perturbed potential (degree 2 only):
@@ -371,20 +381,21 @@ class OceanTideForce:
         # P_20 = (3*sin^2(phi) - 1) / 2
         # P_21 = 3*sin(phi)*cos(phi)
         # P_22 = 3*cos^2(phi)
-        P20 = (3.0 * sin_phi * sin_phi - 1.0) / 2.0
-        P21 = 3.0 * sin_phi * cos_phi
-        P22 = 3.0 * cos_phi * cos_phi
+        P = np.array([
+            (3.0 * sin_phi * sin_phi - 1.0) / 2.0,
+            3.0 * sin_phi * cos_phi,
+            3.0 * cos_phi * cos_phi,
+        ])
 
         # dP/dphi derivatives
         # dP20/dphi = 3*sin(phi)*cos(phi)
         # dP21/dphi = 3*(cos^2(phi) - sin^2(phi)) = 3*cos(2*phi)
         # dP22/dphi = -6*cos(phi)*sin(phi) = -3*sin(2*phi)
-        dP20 = 3.0 * sin_phi * cos_phi
-        dP21 = 3.0 * (cos_phi * cos_phi - sin_phi * sin_phi)
-        dP22 = -6.0 * cos_phi * sin_phi
-
-        P = [P20, P21, P22]
-        dP = [dP20, dP21, dP22]
+        dP = np.array([
+            3.0 * sin_phi * cos_phi,
+            3.0 * (cos_phi * cos_phi - sin_phi * sin_phi),
+            -6.0 * cos_phi * sin_phi,
+        ])
 
         a_r = 0.0
         a_phi = 0.0
@@ -394,8 +405,8 @@ class OceanTideForce:
             cos_mlam = math.cos(m * lam)
             sin_mlam = math.sin(m * lam)
 
-            Hnm = dC[2][m] * cos_mlam + dS[2][m] * sin_mlam
-            Hnm_lam = m * (-dC[2][m] * sin_mlam + dS[2][m] * cos_mlam)
+            Hnm = dC[2, m] * cos_mlam + dS[2, m] * sin_mlam
+            Hnm_lam = m * (-dC[2, m] * sin_mlam + dS[2, m] * cos_mlam)
 
             # Radial: a_r = -(n+1) * (GM/r^2) * (R_E/r)^n * Hnm * Pnm
             a_r += (n + 1) * Hnm * P[m]

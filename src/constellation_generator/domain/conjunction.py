@@ -12,6 +12,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+import numpy as np
+
 from constellation_generator.domain.propagation import OrbitalState, propagate_to
 from constellation_generator.domain.numerical_propagation import NumericalPropagationResult
 
@@ -52,10 +54,8 @@ def _distance_at_time(
     """
     p1, v1 = propagate_to(state1, t)
     p2, v2 = propagate_to(state2, t)
-    dx = p1[0] - p2[0]
-    dy = p1[1] - p2[1]
-    dz = p1[2] - p2[2]
-    dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+    dp = np.array(p1) - np.array(p2)
+    dist = float(np.linalg.norm(dp))
     return dist, p1, v1, p2, v2
 
 
@@ -110,10 +110,8 @@ def screen_conjunctions(
         # Pairwise distance check
         for i in range(n_sats):
             for j in range(i + 1, n_sats):
-                dx = positions[i][0] - positions[j][0]
-                dy = positions[i][1] - positions[j][1]
-                dz = positions[i][2] - positions[j][2]
-                dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+                dp = np.array(positions[i]) - np.array(positions[j])
+                dist = float(np.linalg.norm(dp))
                 if dist <= distance_threshold_m:
                     results.append((i, j, t, dist))
 
@@ -171,10 +169,8 @@ def refine_tca(
     tca = t_guess + timedelta(seconds=best_s)
     dist, p1, v1, p2, v2 = _distance_at_time(state1, state2, tca)
 
-    dvx = v1[0] - v2[0]
-    dvy = v1[1] - v2[1]
-    dvz = v1[2] - v2[2]
-    rel_vel = math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz)
+    dv = np.array(v1) - np.array(v2)
+    rel_vel = float(np.linalg.norm(dv))
 
     return tca, dist, rel_vel
 
@@ -197,55 +193,46 @@ def compute_b_plane(
         (b_radial_m, b_cross_track_m) — B-plane components.
     """
     # Relative velocity direction (encounter frame)
-    dvx = vel1[0] - vel2[0]
-    dvy = vel1[1] - vel2[1]
-    dvz = vel1[2] - vel2[2]
-    dv_mag = math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz)
+    dv = np.array(vel1) - np.array(vel2)
+    dv_mag = float(np.linalg.norm(dv))
 
     if dv_mag < 1e-10:
         return 0.0, 0.0
 
     # Unit vector along relative velocity
-    s_hat = [dvx / dv_mag, dvy / dv_mag, dvz / dv_mag]
+    s_hat = dv / dv_mag
 
     # Miss vector (from sat2 to sat1)
-    mx = pos1[0] - pos2[0]
-    my = pos1[1] - pos2[1]
-    mz = pos1[2] - pos2[2]
+    m_vec = np.array(pos1) - np.array(pos2)
 
     # Project miss vector onto B-plane (perpendicular to s_hat)
-    m_dot_s = mx * s_hat[0] + my * s_hat[1] + mz * s_hat[2]
-    bx = mx - m_dot_s * s_hat[0]
-    by = my - m_dot_s * s_hat[1]
-    bz = mz - m_dot_s * s_hat[2]
+    m_dot_s = float(np.dot(m_vec, s_hat))
+    b_vec = m_vec - m_dot_s * s_hat
 
     # Define radial direction: component of position in B-plane
     # Use orbit normal approximation: z-component dominant for radial
-    r1_mag = math.sqrt(pos1[0] ** 2 + pos1[1] ** 2 + pos1[2] ** 2)
+    p1 = np.array(pos1)
+    r1_mag = float(np.linalg.norm(p1))
     if r1_mag < 1e-10:
-        return math.sqrt(bx * bx + by * by + bz * bz), 0.0
+        return float(np.linalg.norm(b_vec)), 0.0
 
-    r_hat = [pos1[0] / r1_mag, pos1[1] / r1_mag, pos1[2] / r1_mag]
+    r_hat = p1 / r1_mag
 
     # Radial component in B-plane
-    r_proj_s = r_hat[0] * s_hat[0] + r_hat[1] * s_hat[1] + r_hat[2] * s_hat[2]
-    r_b = [r_hat[i] - r_proj_s * s_hat[i] for i in range(3)]
-    r_b_mag = math.sqrt(r_b[0] ** 2 + r_b[1] ** 2 + r_b[2] ** 2)
+    r_proj_s = float(np.dot(r_hat, s_hat))
+    r_b = r_hat - r_proj_s * s_hat
+    r_b_mag = float(np.linalg.norm(r_b))
 
     if r_b_mag < 1e-10:
-        return math.sqrt(bx * bx + by * by + bz * bz), 0.0
+        return float(np.linalg.norm(b_vec)), 0.0
 
-    r_b_hat = [r_b[i] / r_b_mag for i in range(3)]
+    r_b_hat = r_b / r_b_mag
 
     # Cross-track direction: s_hat x r_b_hat
-    ct_hat = [
-        s_hat[1] * r_b_hat[2] - s_hat[2] * r_b_hat[1],
-        s_hat[2] * r_b_hat[0] - s_hat[0] * r_b_hat[2],
-        s_hat[0] * r_b_hat[1] - s_hat[1] * r_b_hat[0],
-    ]
+    ct_hat = np.cross(s_hat, r_b_hat)
 
-    b_radial = bx * r_b_hat[0] + by * r_b_hat[1] + bz * r_b_hat[2]
-    b_cross = bx * ct_hat[0] + by * ct_hat[1] + bz * ct_hat[2]
+    b_radial = float(np.dot(b_vec, r_b_hat))
+    b_cross = float(np.dot(b_vec, ct_hat))
 
     return b_radial, b_cross
 
@@ -438,10 +425,8 @@ def screen_conjunctions_numerical(
 
         for i in range(n_sats):
             for j in range(i + 1, n_sats):
-                dx = positions[i][0] - positions[j][0]
-                dy = positions[i][1] - positions[j][1]
-                dz = positions[i][2] - positions[j][2]
-                dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+                dp = np.array(positions[i]) - np.array(positions[j])
+                dist = float(np.linalg.norm(dp))
                 if dist <= distance_threshold_m:
                     candidates.append((i, j, t, dist))
 

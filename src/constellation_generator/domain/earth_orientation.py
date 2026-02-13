@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
 from constellation_generator.domain.time_systems import datetime_to_jd
 
 # --------------------------------------------------------------------------- #
@@ -205,44 +207,39 @@ def polar_motion_matrix(
     -------
     W : 3x3 rotation matrix (tuple of tuples).
     """
-    cx, sx = math.cos(xp_rad), math.sin(xp_rad)
-    cy, sy = math.cos(yp_rad), math.sin(yp_rad)
-    cs, ss = math.cos(-s_prime_rad), math.sin(-s_prime_rad)
+    cx, sx = float(np.cos(xp_rad)), float(np.sin(xp_rad))
+    cy, sy = float(np.cos(yp_rad)), float(np.sin(yp_rad))
+    cs, ss = float(np.cos(-s_prime_rad)), float(np.sin(-s_prime_rad))
 
     # R1(y_p)
-    R1 = (
-        (1.0, 0.0, 0.0),
-        (0.0, cy, sy),
-        (0.0, -sy, cy),
-    )
+    R1 = np.array([
+        [1.0, 0.0, 0.0],
+        [0.0, cy, sy],
+        [0.0, -sy, cy],
+    ])
 
     # R2(x_p)
-    R2 = (
-        (cx, 0.0, -sx),
-        (0.0, 1.0, 0.0),
-        (sx, 0.0, cx),
-    )
+    R2 = np.array([
+        [cx, 0.0, -sx],
+        [0.0, 1.0, 0.0],
+        [sx, 0.0, cx],
+    ])
 
     # R3(-s')
-    R3 = (
-        (cs, ss, 0.0),
-        (-ss, cs, 0.0),
-        (0.0, 0.0, 1.0),
-    )
+    R3 = np.array([
+        [cs, ss, 0.0],
+        [-ss, cs, 0.0],
+        [0.0, 0.0, 1.0],
+    ])
 
     # W = R3(-s') · R2(x_p) · R1(y_p)
-    # Compute R2 · R1 first
-    R2R1 = _mat_mul(R2, R1)
-    return _mat_mul(R3, R2R1)
+    W = R3 @ R2 @ R1
+    return tuple(tuple(float(x) for x in row) for row in W)
 
 
 def _mat_mul(A: tuple, B: tuple) -> tuple[tuple[float, ...], ...]:
     """Multiply two 3x3 matrices."""
-    result = [[0.0] * 3 for _ in range(3)]
-    for i in range(3):
-        for j in range(3):
-            s = 0.0
-            for k in range(3):
-                s += A[i][k] * B[k][j]
-            result[i][j] = s
-    return tuple(tuple(row) for row in result)
+    A_arr = np.array(A)
+    B_arr = np.array(B)
+    result = A_arr @ B_arr
+    return tuple(tuple(float(x) for x in row) for row in result)
