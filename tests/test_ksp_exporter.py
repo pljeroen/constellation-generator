@@ -260,7 +260,7 @@ class TestKerbinScaling:
         path = str(tmp_path / "test.sfs")
         KspExporter(scale_to_kerbin=True).export(sats, path, epoch=EPOCH)
 
-        r_earth = OrbitalConstants.R_EARTH + 550_000.0
+        r_earth = OrbitalConstants.R_EARTH_EQUATORIAL + 550_000.0
         scale = 600_000.0 / OrbitalConstants.R_EARTH
         expected_sma = r_earth * scale
 
@@ -279,7 +279,7 @@ class TestKerbinScaling:
         path = str(tmp_path / "test.sfs")
         KspExporter(scale_to_kerbin=False).export(sats, path, epoch=EPOCH)
 
-        expected_sma = OrbitalConstants.R_EARTH + 550_000.0
+        expected_sma = OrbitalConstants.R_EARTH_EQUATORIAL + 550_000.0
 
         text = _read_export(path)
         vessels = _extract_vessels(text)
@@ -315,7 +315,7 @@ class TestKerbinScaling:
         KspExporter(scale_to_kerbin=True).export(sats, path, epoch=EPOCH)
 
         from humeris.domain.orbital_mechanics import OrbitalConstants
-        r_earth = OrbitalConstants.R_EARTH + 20_180_000.0
+        r_earth = OrbitalConstants.R_EARTH_EQUATORIAL + 20_180_000.0
         scale = 600_000.0 / OrbitalConstants.R_EARTH
         expected_sma = r_earth * scale
 

@@ -30,7 +30,7 @@ from humeris.domain.serialization import (
 class TestKeplerToCartesian:
 
     def test_circular_orbit_radius(self):
-        a = OrbitalConstants.R_EARTH + 500_000
+        a = OrbitalConstants.R_EARTH_EQUATORIAL + 500_000
         pos, vel = kepler_to_cartesian(a=a, e=0.0, i_rad=0.0,
                                         omega_big_rad=0.0, omega_small_rad=0.0,
                                         nu_rad=0.0)
@@ -38,7 +38,7 @@ class TestKeplerToCartesian:
         assert abs(r - a) < 1.0
 
     def test_circular_orbit_velocity_magnitude(self):
-        a = OrbitalConstants.R_EARTH + 500_000
+        a = OrbitalConstants.R_EARTH_EQUATORIAL + 500_000
         pos, vel = kepler_to_cartesian(a=a, e=0.0, i_rad=0.0,
                                         omega_big_rad=0.0, omega_small_rad=0.0,
                                         nu_rad=0.0)
@@ -47,7 +47,7 @@ class TestKeplerToCartesian:
         assert abs(v_mag - v_expected) < 0.1
 
     def test_circular_orbit_perpendicularity(self):
-        a = OrbitalConstants.R_EARTH + 500_000
+        a = OrbitalConstants.R_EARTH_EQUATORIAL + 500_000
         pos, vel = kepler_to_cartesian(a=a, e=0.0, i_rad=math.radians(45),
                                         omega_big_rad=math.radians(30),
                                         omega_small_rad=0.0,

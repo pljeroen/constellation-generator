@@ -500,7 +500,8 @@ class ConstellationHandler(BaseHTTPRequestHandler):
     def _set_headers(self, status: int = 200, content_type: str = "application/json") -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        port = self.server.server_address[1]
+        self.send_header("Access-Control-Allow-Origin", f"http://localhost:{port}")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
@@ -512,10 +513,17 @@ class ConstellationHandler(BaseHTTPRequestHandler):
     def _error_response(self, status: int, message: str) -> None:
         self._json_response({"error": message}, status)
 
+    _MAX_BODY_SIZE = 10 * 1024 * 1024  # 10 MB
+
     def _read_body(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", 0))
         if length == 0:
             return {}
+        if length > self._MAX_BODY_SIZE:
+            raise ValueError(
+                f"Request body too large: {length} bytes "
+                f"(max {self._MAX_BODY_SIZE})"
+            )
         raw = self.rfile.read(length)
         return json.loads(raw.decode())
 
@@ -632,7 +640,7 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                     params=params,
                 )
                 self._json_response({"layer_id": layer_id}, 201)
-            except Exception as e:
+            except (ConnectionError, OSError, ValueError, KeyError, json.JSONDecodeError) as e:
                 self._error_response(400, f"CelesTrak fetch failed: {e}")
             return
 
@@ -671,8 +679,9 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                 params=params,
             )
             self._json_response({"layer_id": layer_id}, 201)
-        except Exception as e:
-            self._error_response(500, f"Analysis generation failed: {e}")
+        except (ValueError, TypeError, KeyError, ArithmeticError) as e:
+            logger.exception("Analysis generation failed")
+            self._error_response(500, "Analysis generation failed")
 
     def _handle_add_ground_station(self) -> None:
         body = self._read_body()
@@ -699,8 +708,9 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                 source_states=source_states[:6],  # limit for performance
             )
             self._json_response({"layer_id": layer_id}, 201)
-        except Exception as e:
-            self._error_response(500, f"Ground station failed: {e}")
+        except (ValueError, TypeError, KeyError) as e:
+            logger.exception("Ground station failed")
+            self._error_response(500, "Ground station failed")
 
     # --- PUT ---
 

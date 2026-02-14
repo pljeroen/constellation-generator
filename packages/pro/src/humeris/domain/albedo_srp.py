@@ -14,13 +14,15 @@ from datetime import datetime
 
 import numpy as np
 
+from humeris.domain.orbital_mechanics import OrbitalConstants
+
 
 # --- Constants ---
 
 _SOLAR_FLUX = 1361.0  # W/m², solar constant at 1 AU
 _EARTH_ALBEDO = 0.3  # mean Earth albedo
 _EARTH_IR = 237.0  # W/m², mean Earth IR emission
-_R_EARTH = 6378137.0  # m
+_R_EARTH = OrbitalConstants.R_EARTH_EQUATORIAL  # m — equatorial radius for albedo geometry
 _C_LIGHT = 299792458.0  # m/s
 _AU = 1.495978707e11  # m
 

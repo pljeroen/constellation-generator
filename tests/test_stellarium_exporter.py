@@ -140,7 +140,7 @@ class TestOrbitalElements:
     def test_mean_motion_approximately_correct(self):
         """Mean motion for 550 km should be ~15.5 rev/day."""
         lines = _export_tle_lines()
-        r = OrbitalConstants.R_EARTH + 550_000
+        r = OrbitalConstants.R_EARTH_EQUATORIAL + 550_000
         period = 2 * math.pi * math.sqrt(r**3 / OrbitalConstants.MU_EARTH)
         expected_n = 86400.0 / period
         for i in range(0, len(lines), self._STRIDE):

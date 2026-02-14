@@ -760,7 +760,7 @@ class TestHttpApi:
         port, mgr = running_server
         url = f"http://localhost:{port}/api/state"
         resp = urllib.request.urlopen(url, timeout=5)
-        assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+        assert resp.headers.get("Access-Control-Allow-Origin") == f"http://localhost:{port}"
 
     def test_state_includes_epoch(self, running_server):
         port, mgr = running_server

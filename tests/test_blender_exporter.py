@@ -128,8 +128,8 @@ class TestSatelliteObjects:
         assert "subdivisions=1" in script_content
 
     def test_location_coordinates_reasonable(self, script_content, satellites):
-        """Satellite positions should be ~6921 km from origin (550 km alt)."""
-        expected_r_km = (OrbitalConstants.R_EARTH + 550 * 1000) / 1000.0
+        """Satellite positions should be ~6928 km from origin (550 km alt)."""
+        expected_r_km = (OrbitalConstants.R_EARTH_EQUATORIAL + 550 * 1000) / 1000.0
         # Check that at least one location value is in the right ballpark
         # Parse a location tuple from the script
         import re

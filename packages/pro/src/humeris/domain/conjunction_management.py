@@ -25,7 +25,7 @@ from humeris.domain.conjunction import ConjunctionEvent
 from humeris.domain.orbital_mechanics import OrbitalConstants
 
 
-_MU = 3.986004418e14
+_MU = OrbitalConstants.MU_EARTH
 _R_EARTH = OrbitalConstants.R_EARTH
 
 

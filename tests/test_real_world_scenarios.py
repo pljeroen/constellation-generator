@@ -509,8 +509,8 @@ class TestStarlink:
         sats = generate_walker_shell(config)
         assert len(sats) == 4 * 3, f"Expected 12 satellites, got {len(sats)}"
 
-        # Verify orbital altitude is correct (position magnitude ~ R_E + 550 km)
-        expected_r = R_EARTH + self.OPER_ALT_KM * 1000.0
+        # Verify orbital altitude is correct (position magnitude ~ R_E_eq + 550 km)
+        expected_r = R_EARTH_EQ + self.OPER_ALT_KM * 1000.0
         for sat in sats:
             r_mag = math.sqrt(
                 sat.position_eci[0] ** 2

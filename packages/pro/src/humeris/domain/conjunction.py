@@ -96,23 +96,37 @@ def screen_conjunctions(
     n_sats = len(states)
     results: list[tuple[int, int, datetime, float]] = []
 
+    # Altitude-band pre-filter: skip pairs whose semi-major axes differ
+    # by more than the distance threshold (they can never be close enough).
+    sma = np.array([s.semi_major_axis_m for s in states])
+    candidate_pairs: list[tuple[int, int]] = []
+    for i in range(n_sats):
+        for j in range(i + 1, n_sats):
+            if abs(sma[i] - sma[j]) <= distance_threshold_m:
+                candidate_pairs.append((i, j))
+
+    if not candidate_pairs:
+        return results
+
     t_elapsed = 0.0
     while t_elapsed <= duration_seconds:
         t = start + timedelta(seconds=t_elapsed)
 
         # Propagate all states to current time
-        positions = []
-        for s in states:
-            pos, _ = propagate_to(s, t)
-            positions.append(pos)
+        positions: list[list[float]] = [[] for _ in range(n_sats)]
+        propagated: set[int] = set()
 
-        # Pairwise distance check
-        for i in range(n_sats):
-            for j in range(i + 1, n_sats):
-                dp = np.array(positions[i]) - np.array(positions[j])
-                dist = float(np.linalg.norm(dp))
-                if dist <= distance_threshold_m:
-                    results.append((i, j, t, dist))
+        for i, j in candidate_pairs:
+            for idx in (i, j):
+                if idx not in propagated:
+                    pos, _ = propagate_to(states[idx], t)
+                    positions[idx] = pos
+                    propagated.add(idx)
+
+            dp = np.array(positions[i]) - np.array(positions[j])
+            dist = float(np.linalg.norm(dp))
+            if dist <= distance_threshold_m:
+                results.append((i, j, t, dist))
 
         t_elapsed += step_seconds
 
@@ -415,6 +429,19 @@ def screen_conjunctions_numerical(
     if n_sats < 2:
         return []
 
+    # Altitude-band pre-filter using initial positions
+    initial_radii = np.array([
+        float(np.linalg.norm(r.steps[0].position_eci)) for r in results
+    ])
+    candidate_pairs: list[tuple[int, int]] = []
+    for i in range(n_sats):
+        for j in range(i + 1, n_sats):
+            if abs(initial_radii[i] - initial_radii[j]) <= distance_threshold_m:
+                candidate_pairs.append((i, j))
+
+    if not candidate_pairs:
+        return []
+
     candidates: list[tuple[int, int, datetime, float]] = []
     n_steps = len(results[0].steps)
 
@@ -422,12 +449,11 @@ def screen_conjunctions_numerical(
         positions = [r.steps[step_idx].position_eci for r in results]
         t = results[0].steps[step_idx].time
 
-        for i in range(n_sats):
-            for j in range(i + 1, n_sats):
-                dp = np.array(positions[i]) - np.array(positions[j])
-                dist = float(np.linalg.norm(dp))
-                if dist <= distance_threshold_m:
-                    candidates.append((i, j, t, dist))
+        for i, j in candidate_pairs:
+            dp = np.array(positions[i]) - np.array(positions[j])
+            dist = float(np.linalg.norm(dp))
+            if dist <= distance_threshold_m:
+                candidates.append((i, j, t, dist))
 
     candidates.sort(key=lambda x: x[3])
     return candidates

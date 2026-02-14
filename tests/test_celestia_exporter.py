@@ -133,7 +133,7 @@ class TestOrbitalElements:
         CelestiaExporter().export(sats, path, epoch=EPOCH)
 
         content = _read_ssc(path)
-        expected_a_km = (OrbitalConstants.R_EARTH + 550_000) / 1000.0
+        expected_a_km = (OrbitalConstants.R_EARTH_EQUATORIAL + 550_000) / 1000.0
         matches = re.findall(r'SemiMajorAxis\s+([\d.eE+-]+)', content)
         assert len(matches) == len(sats)
         for m in matches:
@@ -197,7 +197,7 @@ class TestOrbitalElements:
         CelestiaExporter().export(sats, path, epoch=EPOCH)
 
         content = _read_ssc(path)
-        a_m = OrbitalConstants.R_EARTH + 550_000
+        a_m = OrbitalConstants.R_EARTH_EQUATORIAL + 550_000
         period_s = 2 * math.pi * math.sqrt(a_m**3 / OrbitalConstants.MU_EARTH)
         expected_days = period_s / 86400.0
 

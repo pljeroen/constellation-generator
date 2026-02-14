@@ -50,7 +50,14 @@ def generate_walker_shell(config: ShellConfig) -> list[Satellite]:
     Returns:
         List of Satellite objects with ECI positions/velocities.
     """
-    r = OrbitalConstants.R_EARTH + config.altitude_km * 1000
+    if config.altitude_km <= 0:
+        raise ValueError(f"altitude_km must be positive, got {config.altitude_km}")
+    if config.num_planes <= 0:
+        raise ValueError(f"num_planes must be positive, got {config.num_planes}")
+    if config.sats_per_plane <= 0:
+        raise ValueError(f"sats_per_plane must be positive, got {config.sats_per_plane}")
+
+    r = OrbitalConstants.R_EARTH_EQUATORIAL + config.altitude_km * 1000
     a = r
     e = 0.0
     i_rad = float(np.radians(config.inclination_deg))
@@ -116,6 +123,13 @@ def generate_sso_band_configs(
     Returns:
         List of ShellConfig objects.
     """
+    if start_alt_km <= 0:
+        raise ValueError(f"start_alt_km must be positive, got {start_alt_km}")
+    if step_km <= 0:
+        raise ValueError(f"step_km must be positive, got {step_km}")
+    if sats_per_plane <= 0:
+        raise ValueError(f"sats_per_plane must be positive, got {sats_per_plane}")
+
     configs: list[ShellConfig] = []
     alt = start_alt_km
 

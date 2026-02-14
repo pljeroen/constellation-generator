@@ -135,7 +135,7 @@ class TestOrbitalElements:
 
         content = _read_sc(path)
         # 550 km altitude = R_earth + 550km ≈ 6928 km ≈ 4.63e-5 AU
-        expected_a_m = OrbitalConstants.R_EARTH + 550_000
+        expected_a_m = OrbitalConstants.R_EARTH_EQUATORIAL + 550_000
         expected_a_au = expected_a_m / 1.496e11
         matches = re.findall(r'SemiMajorAxis\s+([\d.eE+-]+)', content)
         assert len(matches) == len(sats)
@@ -230,7 +230,7 @@ class TestOrbitalElements:
 
         content = _read_sc(path)
         # Orbital period for 550km LEO ≈ 96 min ≈ 1.83e-4 years
-        a_m = OrbitalConstants.R_EARTH + 550_000
+        a_m = OrbitalConstants.R_EARTH_EQUATORIAL + 550_000
         period_s = 2 * math.pi * math.sqrt(a_m**3 / OrbitalConstants.MU_EARTH)
         expected_yr = period_s / (365.25 * 86400)
 

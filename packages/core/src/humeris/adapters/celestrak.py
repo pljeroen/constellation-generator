@@ -197,7 +197,7 @@ class CelesTrakAdapter(OrbitalDataSource):
 
     def _fetch_json(self, url: str) -> list[dict[str, Any]]:
         """Fetch JSON data from CelesTrak API."""
-        req = urllib.request.Request(url, headers={"User-Agent": "Humeris/1.23"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Humeris/1.26.1"})
         try:
             with urllib.request.urlopen(req, timeout=self._timeout) as response:
                 text = response.read().decode('utf-8')

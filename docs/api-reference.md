@@ -1,7 +1,7 @@
 # API Reference
 
 The viewer server exposes a REST API on `http://localhost:<port>`.
-All data endpoints return JSON. CORS is enabled (`Access-Control-Allow-Origin: *`).
+All data endpoints return JSON. CORS is restricted to `http://localhost:<port>`.
 
 ## Endpoints
 

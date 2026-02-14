@@ -94,7 +94,7 @@ class TestDeriveOrbitalState:
 
         sat = _make_satellite(altitude_km=500)
         state = derive_orbital_state(sat, _EPOCH)
-        expected_a = OrbitalConstants.R_EARTH + 500_000
+        expected_a = OrbitalConstants.R_EARTH_EQUATORIAL + 500_000
         assert abs(state.semi_major_axis_m - expected_a) < 1.0
 
     def test_mean_motion(self):
@@ -103,7 +103,7 @@ class TestDeriveOrbitalState:
 
         sat = _make_satellite(altitude_km=500)
         state = derive_orbital_state(sat, _EPOCH)
-        a = OrbitalConstants.R_EARTH + 500_000
+        a = OrbitalConstants.R_EARTH_EQUATORIAL + 500_000
         expected_n = math.sqrt(OrbitalConstants.MU_EARTH / a**3)
         assert abs(state.mean_motion_rad_s - expected_n) < 1e-10
 
@@ -148,7 +148,7 @@ class TestPropagateTo:
         state = derive_orbital_state(sat, _EPOCH)
         pos, vel = propagate_to(state, _EPOCH)
         r = math.sqrt(sum(p**2 for p in pos))
-        expected_r = OrbitalConstants.R_EARTH + 500_000
+        expected_r = OrbitalConstants.R_EARTH_EQUATORIAL + 500_000
         assert abs(r - expected_r) < 1.0
 
     def test_one_period_returns_near_start(self):
@@ -170,7 +170,7 @@ class TestPropagateTo:
 
         sat = _make_satellite(altitude_km=500)
         state = derive_orbital_state(sat, _EPOCH)
-        expected_r = OrbitalConstants.R_EARTH + 500_000
+        expected_r = OrbitalConstants.R_EARTH_EQUATORIAL + 500_000
         for minutes in [0, 15, 30, 45, 60]:
             pos, _ = propagate_to(state, _EPOCH + timedelta(minutes=minutes))
             r = math.sqrt(sum(p**2 for p in pos))
@@ -197,7 +197,7 @@ class TestPropagateECEFTo:
         state = derive_orbital_state(sat, _EPOCH)
         x, y, z = propagate_ecef_to(state, _EPOCH)
         r = math.sqrt(x**2 + y**2 + z**2)
-        expected_r = OrbitalConstants.R_EARTH + 500_000
+        expected_r = OrbitalConstants.R_EARTH_EQUATORIAL + 500_000
         assert abs(r - expected_r) < 100.0
 
 

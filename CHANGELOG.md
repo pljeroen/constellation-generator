@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here.
 
+## [1.26.1] - 2026-02-14
+
+### Fixes from adversarial code review
+
+- **R_EARTH consistency** — `albedo_srp.py` now uses `OrbitalConstants.R_EARTH_EQUATORIAL`
+  instead of hardcoded 6378137.0. Walker shell generator (`constellation.py`) switched from
+  mean radius to equatorial radius, consistent with SSO inclination and J2 calculations.
+- **Hardcoded μ** — `conjunction_management.py` now uses `OrbitalConstants.MU_EARTH` instead
+  of inline constant.
+- **User-Agent version** — CelesTrak adapters updated from "Humeris/1.23" to "Humeris/1.26.1".
+- **Request body size limit** — Viewer server `_read_body()` now rejects payloads > 10 MB.
+- **CORS restriction** — Viewer server CORS origin restricted from `*` to
+  `http://localhost:{port}`.
+- **Exception handling** — Viewer server narrows `except Exception` to specific types
+  (`ValueError`, `TypeError`, `KeyError`, etc.) and logs tracebacks instead of leaking
+  internal error messages to HTTP responses.
+- **Input validation** — `generate_walker_shell`, `generate_sso_band_configs`, and
+  `sso_inclination_deg` now reject non-positive altitude, zero planes/sats, and zero step.
+- **Conjunction screening pre-filter** — `screen_conjunctions` and
+  `screen_conjunctions_numerical` now skip pairs with SMA difference exceeding the distance
+  threshold, reducing unnecessary pairwise distance checks.
+- **Type annotations** — `build_satellite_entity` parameter and return types fully annotated.
+
 ## [1.26.0] - 2026-02-14
 
 ### NRLMSISE-00 fidelity improvements

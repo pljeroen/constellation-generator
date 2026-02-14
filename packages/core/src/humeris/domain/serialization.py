@@ -7,7 +7,11 @@ Pure formatting functions for converting ECI state vectors to the
 semicolon-delimited string format with Y/Z axis swap.
 """
 
+from typing import Any
+
 import numpy as np
+
+from humeris.domain.constellation import Satellite
 
 
 def format_position(pos_eci: list[float] | tuple[float, float, float]) -> str:
@@ -43,10 +47,10 @@ def format_velocity(vel_eci: list[float] | tuple[float, float, float]) -> str:
 
 
 def build_satellite_entity(
-    satellite,
-    template: dict,
+    satellite: Satellite,
+    template: dict[str, Any],
     base_id: int,
-) -> dict:
+) -> dict[str, Any]:
     """
     Build a simulation entity dict from a Satellite domain object.
 

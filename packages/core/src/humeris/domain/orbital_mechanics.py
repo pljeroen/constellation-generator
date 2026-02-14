@@ -102,6 +102,9 @@ def sso_inclination_deg(altitude_km: float) -> float:
     Returns:
         Inclination in degrees (retrograde, > 90°)
     """
+    if altitude_km <= 0:
+        raise ValueError(f"altitude_km must be positive, got {altitude_km}")
+
     c = OrbitalConstants
     r = altitude_km * 1000 + c.R_EARTH_EQUATORIAL
     cos_i = -(2 * c.EARTH_OMEGA / (3 * c.J2_EARTH * c.R_EARTH_EQUATORIAL**2)) * (

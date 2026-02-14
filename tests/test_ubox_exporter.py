@@ -292,7 +292,7 @@ class TestSatelliteEntities:
         path = str(tmp_path / "test.ubox")
         UboxExporter().export(sats, path, epoch=EPOCH)
 
-        expected_r = OrbitalConstants.R_EARTH + 550_000.0
+        expected_r = OrbitalConstants.R_EARTH_EQUATORIAL + 550_000.0
         sim = _parse_simulation(path)
         for entity in sim["Entities"]:
             if entity.get("Name") != "Earth":
