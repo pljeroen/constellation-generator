@@ -61,17 +61,60 @@ jobs:
           name: dist
           path: dist/
 
-  release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: build
+  build-exe:
+    name: Build Windows installer
+    runs-on: windows-latest
+    needs: test
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download artifacts
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install packages and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install ./packages/core ./packages/pro pyinstaller
+
+      - name: Build exe
+        run: >
+          pyinstaller
+          --name humeris
+          --onedir
+          --console
+          --collect-all humeris
+          --copy-metadata humeris-core
+          --copy-metadata humeris-pro
+          packages/core/src/humeris/cli.py
+
+      - name: Create zip
+        run: Compress-Archive -Path dist/humeris -DestinationPath dist/humeris-windows-x64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: dist/humeris-windows-x64.zip
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build, build-exe]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download wheel artifacts
         uses: actions/download-artifact@v4
         with:
           name: dist
+          path: dist/
+
+      - name: Download Windows exe
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-exe
           path: dist/
 
       - name: Create release
