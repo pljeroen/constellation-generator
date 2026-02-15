@@ -1,9 +1,6 @@
 # Humeris
 
-[![Version](https://img.shields.io/badge/version-1.26.1-blue.svg)](packages/core/pyproject.toml)
-[![Python](https://img.shields.io/badge/python-3.11_%7C_3.12_%7C_3.13-blue.svg)](packages/core/pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-3226_passing-brightgreen.svg)](tests/)
-[![License](https://img.shields.io/badge/license-MIT_(core)-green.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.26.1-blue.svg)](packages/core/pyproject.toml) [![Python](https://img.shields.io/badge/python-3.11_%7C_3.12_%7C_3.13-blue.svg)](packages/core/pyproject.toml) [![Tests](https://img.shields.io/badge/tests-3227_passing-brightgreen.svg)](tests/) [![License](https://img.shields.io/badge/license-MIT_(core)-green.svg)](LICENSE) [![License](https://img.shields.io/badge/license-Commercial_(pro)-red.svg)](COMMERCIAL-LICENSE.md) [![Architecture](https://img.shields.io/badge/architecture-hexagonal-purple.svg)](docs/architecture.md)
 
 Generate Walker constellation satellite shells and fetch live orbital data for orbit simulation tools.
 
@@ -615,16 +612,16 @@ Launch an interactive 3D viewer with on-demand analysis layers:
 
 ```bash
 # Interactive server mode (opens browser)
-python view_constellation.py --serve
+python scripts/view_constellation.py --serve
 
 # Custom port
-python view_constellation.py --serve --port 9000
+python scripts/view_constellation.py --serve --port 9000
 
 # Static HTML mode (generates constellation_viewer.html, no server needed)
-python view_constellation.py
+python scripts/view_constellation.py
 
 # Static + auto-open in browser
-python view_constellation.py --open
+python scripts/view_constellation.py --open
 ```
 
 **Server mode** pre-loads three Walker shells (500/450/400 km, 1584 sats each)
@@ -654,7 +651,6 @@ The viewer dispatches 15 analysis types, each with sensible defaults:
 | `kessler_heatmap` | Altitude × inclination debris density grid | 200-2000 km, 0-180°, 50 km × 10° bins |
 | `conjunction_hazard` | Conjunction screening with NASA-STD-8719.14 hazard levels | 2h window, 100 km threshold, color by ROUTINE/WARNING/CRITICAL |
 | `ground_station` | Station marker + visibility circle + access tracks | 10° min elevation |
-| `ground_track` | Sub-satellite ground trace polyline | First satellite, 2h |
 
 ##### Default RF link configuration (Ka-band)
 
@@ -798,7 +794,7 @@ port interfaces.
 ## Tests
 
 ```bash
-pytest                           # all 3158 tests (offline, no network required)
+pytest                           # all 3227 tests (offline, no network required)
 pytest tests/test_live_data.py   # live CelesTrak tests (requires network)
 ```
 

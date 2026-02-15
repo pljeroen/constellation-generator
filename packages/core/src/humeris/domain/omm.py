@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .orbital_mechanics import OrbitalConstants
+from humeris.domain.orbital_mechanics import OrbitalConstants
 
 
 @dataclass(frozen=True)

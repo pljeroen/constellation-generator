@@ -1,5 +1,7 @@
 # Copyright (c) 2026 Jeroen Visser. All rights reserved.
-# Licensed under the Commercial License — see COMMERCIAL-LICENSE.md.
+# Licensed under the terms in COMMERCIAL-LICENSE.md.
+# Free for personal, educational, and academic use.
+# Commercial use requires a paid license — see COMMERCIAL-LICENSE.md.
 """Astronomical time systems: AstroTime value object with UTC/TAI/TT/TDB/GPS conversions.
 
 Implements the IAU time scale chain: UTC → TAI → TT → TDB, plus GPS.

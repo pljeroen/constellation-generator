@@ -12,10 +12,10 @@ Cesium globe and generates CZML data on demand for 15 analysis layer types.
 
 ```bash
 # Default port 8765
-python view_constellation.py --serve
+python scripts/view_constellation.py --serve
 
 # Custom port
-python view_constellation.py --serve --port 9000
+python scripts/view_constellation.py --serve --port 9000
 ```
 
 Pre-loads three Walker shells (500/450/400 km, 1584 sats each) and live
@@ -25,10 +25,10 @@ ISS data from CelesTrak. Opens `http://localhost:<port>` in your browser.
 
 ```bash
 # Generate constellation_viewer.html
-python view_constellation.py
+python scripts/view_constellation.py
 
 # Generate and open in browser
-python view_constellation.py --open
+python scripts/view_constellation.py --open
 ```
 
 Produces a ~10 MB self-contained HTML file with baked-in CZML. No server

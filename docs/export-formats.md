@@ -67,7 +67,7 @@ count = exporter.export(satellites, "satellites.geojson")
                 "coordinates": [4.4, 52.0, 550.0]
             },
             "properties": {
-                "name": "LEO-Shell500-P00-S00",
+                "name": "LEO-Shell500-Plane1-Sat1",
                 "plane_index": 0,
                 "sat_index": 0,
                 "raan_deg": 0.0,

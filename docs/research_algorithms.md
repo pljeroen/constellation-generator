@@ -153,4 +153,4 @@ KSCS ←────────────────────────
 
 These algorithms were derived through systematic cross-domain analysis of the Humeris
 astrodynamics library using the Research Team v2.0 multi-disciplinary investigation system
-(90 discipline archetypes, 5 research passes, ICPCS-constrained).
+(90 discipline archetypes, 5 research passes).

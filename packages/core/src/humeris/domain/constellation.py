@@ -12,7 +12,7 @@ from datetime import datetime
 
 import numpy as np
 
-from .orbital_mechanics import kepler_to_cartesian, sso_inclination_deg, OrbitalConstants
+from humeris.domain.orbital_mechanics import kepler_to_cartesian, sso_inclination_deg, OrbitalConstants
 
 
 @dataclass(frozen=True)

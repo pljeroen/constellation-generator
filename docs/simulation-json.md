@@ -71,10 +71,12 @@ satellites).
 Synthetic Walker shell satellites are named:
 
 ```
-{shell_name}-P{plane_index:02d}-S{sat_index:02d}
+{shell_name}-Plane{plane_number}-Sat{sat_number}
 ```
 
-Example: `LEO-Shell500-P03-S17` (shell "LEO-Shell500", plane 3, satellite 17).
+where plane and satellite numbers are 1-indexed.
+
+Example: `LEO-Shell500-Plane3-Sat17` (shell "LEO-Shell500", plane 3, satellite 17).
 
 CelesTrak satellites keep their catalog name (e.g. `ISS (ZARYA)`,
 `GPS BIIR-2 (PRN 13)`).

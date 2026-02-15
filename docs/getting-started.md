@@ -49,7 +49,7 @@ iss = celestrak.fetch_satellites(name="ISS (ZARYA)")
 ### Launch the interactive viewer
 
 ```bash
-python view_constellation.py --serve
+python scripts/view_constellation.py --serve
 ```
 
 Opens a Cesium 3D globe at `http://localhost:8765` with pre-loaded Walker
@@ -58,7 +58,7 @@ shells and live ISS data. See [Viewer Server](viewer-server.md) for details.
 ### Run tests
 
 ```bash
-pytest                          # 3095 tests, all offline
+pytest                          # 3227 tests, all offline
 pytest tests/test_live_data.py  # live CelesTrak (requires network)
 ```
 

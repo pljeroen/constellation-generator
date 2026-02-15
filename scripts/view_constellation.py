@@ -5,10 +5,10 @@
 # and animated tracks only for ISS (1 object where animation is useful).
 #
 # Usage:
-#     python view_constellation.py                    # generate static HTML
-#     python view_constellation.py --open             # generate + open in browser
-#     python view_constellation.py --serve            # interactive server mode
-#     python view_constellation.py --serve --port 9000  # custom port
+#     python scripts/view_constellation.py                    # generate static HTML
+#     python scripts/view_constellation.py --open             # generate + open in browser
+#     python scripts/view_constellation.py --serve            # interactive server mode
+#     python scripts/view_constellation.py --serve --port 9000  # custom port
 #
 # Static mode output: constellation_viewer.html (self-contained, no server)
 # Server mode: opens browser to localhost, add/remove constellations live

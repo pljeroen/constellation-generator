@@ -2,6 +2,8 @@
 # Licensed under the MIT License — see LICENSE.
 """Tests for CelesTrak live data fetching and SGP4 propagation."""
 import math
+import urllib.request
+import urllib.error
 
 import pytest
 
@@ -10,6 +12,19 @@ from humeris.domain.orbital_mechanics import OrbitalConstants
 
 
 sgp4 = pytest.importorskip("sgp4", reason="sgp4 not installed (pip install humeris[live])")
+
+
+def _celestrak_reachable() -> bool:
+    """Check if CelesTrak API is reachable (1-second timeout)."""
+    try:
+        urllib.request.urlopen("https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=JSON", timeout=1)
+        return True
+    except (urllib.error.URLError, OSError):
+        return False
+
+
+_has_network = _celestrak_reachable()
+requires_network = pytest.mark.skipif(not _has_network, reason="CelesTrak unreachable")
 
 
 SAMPLE_OMM = {
@@ -93,6 +108,7 @@ class TestSGP4Adapter:
 
 # ── CelesTrak adapter (network) ─────────────────────────────────────
 
+@requires_network
 class TestCelesTrakAdapter:
 
     def test_implements_port(self):
