@@ -4,17 +4,21 @@
 
 The viewer server provides a browser-based 3D visualization of satellite
 constellations using CesiumJS. It runs a local HTTP server that serves a
-Cesium globe and generates CZML data on demand for 15 analysis layer types.
+Cesium globe and generates CZML data on demand for 21 analysis layer types.
 
 ## Launching
 
 ### Server mode (interactive)
 
 ```bash
-# Default port 8765
-python scripts/view_constellation.py --serve
+# Via CLI entry point
+humeris --serve
 
 # Custom port
+humeris --serve --port 9000
+
+# Or via script directly
+python scripts/view_constellation.py --serve
 python scripts/view_constellation.py --serve --port 9000
 ```
 
@@ -48,7 +52,7 @@ Plus live ISS data from CelesTrak (animated track).
 
 ## Analysis layer types
 
-The viewer dispatches 15 analysis types via `_generate_czml()`. Each uses
+The viewer dispatches 21 analysis types via `_generate_czml()`. Each uses
 sensible defaults that can be overridden via the `params` dict in the API.
 
 ### Core layers
@@ -80,6 +84,14 @@ sensible defaults that can be overridden via the `params` dict in the API.
 | `conjunction` | Two-satellite close approach replay with proximity line | states[0] vs states[n/2], ±30 min, 10s step |
 | `kessler_heatmap` | Altitude × inclination debris density heatmap | 200-2000 km, 0-180°, 50 km × 10° bins |
 | `conjunction_hazard` | Conjunction screening with NASA-STD-8719.14 hazard levels | 2h window, 100 km threshold, ROUTINE/WARNING/CRITICAL coloring |
+| `dop_grid` | Ground heatmap colored by dilution of precision | 10° grid |
+| `radiation` | Satellites colored by radiation environment | 2h duration, 60s step |
+| `beta_angle` | Satellites colored by solar beta angle | Snapshot |
+| `deorbit` | Satellites colored by deorbit compliance status | Cd=2.2, A=0.01 m², m=4 kg |
+| `station_keeping` | Satellites colored by station-keeping ΔV budget | Cd=2.2, A=0.01 m², m=4 kg |
+| `cascade_sir` | SIR epidemic cascade debris evolution | 2h duration, 60s step |
+| `relative_motion` | Relative motion trajectory between two satellites | states[0] vs states[1], 2h duration |
+| `maintenance` | Satellites colored by maintenance schedule status | Cd=2.2, A=0.01 m², m=4 kg |
 
 ## Default configurations
 

@@ -1,10 +1,38 @@
 # Humeris
 
-[![Version](https://img.shields.io/badge/version-1.26.1-blue.svg)](packages/core/pyproject.toml) [![Python](https://img.shields.io/badge/python-3.11_%7C_3.12_%7C_3.13-blue.svg)](packages/core/pyproject.toml) [![Tests](https://img.shields.io/badge/tests-3227_passing-brightgreen.svg)](tests/) [![License](https://img.shields.io/badge/license-MIT_(core)-green.svg)](LICENSE) [![License](https://img.shields.io/badge/license-Commercial_(pro)-red.svg)](COMMERCIAL-LICENSE.md) [![Architecture](https://img.shields.io/badge/architecture-hexagonal-purple.svg)](docs/architecture.md)
+[![Version](https://img.shields.io/badge/version-1.26.3-blue.svg)](packages/core/pyproject.toml) [![Python](https://img.shields.io/badge/python-3.11_%7C_3.12_%7C_3.13-blue.svg)](packages/core/pyproject.toml) [![Tests](https://img.shields.io/badge/tests-3236_passing-brightgreen.svg)](tests/) [![License](https://img.shields.io/badge/license-MIT_(core)-green.svg)](LICENSE) [![License](https://img.shields.io/badge/license-Commercial_(pro)-red.svg)](COMMERCIAL-LICENSE.md) [![Architecture](https://img.shields.io/badge/architecture-hexagonal-purple.svg)](docs/architecture.md)
 
 Generate Walker constellation satellite shells and fetch live orbital data for orbit simulation tools.
 
 ![Humeris interactive viewer](docs/interface.png)
+
+### Capabilities
+
+- Walker constellation generation with configurable shells
+- Live satellite data from CelesTrak (TLE/OMM, SGP4 propagation)
+- Keplerian, J2/J3 secular, and RK4/Dormand-Prince numerical propagation
+- Pluggable perturbation forces (drag, SRP, third-body, relativistic, tidal, albedo)
+- NRLMSISE-00 atmosphere model with solar cycle prediction
+- Coordinate frames (ECI, ECEF, geodetic, topocentric)
+- Coverage analysis and revisit time computation
+- Access window prediction
+- Eclipse prediction and beta angle analysis
+- Conjunction screening and collision probability
+- Orbit design (sun-synchronous, frozen, repeat ground track)
+- Trade studies with Pareto optimization
+- Maneuver planning (Hohmann, bi-elliptic, plane change)
+- Orbit lifetime and deorbit compliance assessment
+- Station-keeping delta-V budgets
+- Inter-satellite links and link budget analysis
+- Network topology analysis (Hodge Laplacian, spectral)
+- Orbit determination (EKF) and maneuver detection (CUSUM/EWMA)
+- Hazard reporting (NASA-STD-8719.14)
+- Kessler cascade and debris density modeling
+- High-fidelity time systems (UTC/TAI/TT/TDB/GPS)
+- IAU 2006 precession, IAU 2000B nutation, planetary ephemeris
+- Relativistic and tidal force models
+- Interactive 3D CesiumJS viewer with 21 analysis types
+- Export to CSV, GeoJSON, CZML, KML, Celestia, Blender, SpaceEngine, KSP, Universe Sandbox, Stellarium
 
 > **Disclaimer**: This library provides computational models for educational,
 > research, and engineering analysis purposes. It is **not certified** for
@@ -16,6 +44,8 @@ Generate Walker constellation satellite shells and fetch live orbital data for o
 
 ## Install
 
+### From PyPI
+
 ```bash
 # Core MIT package (constellation generation, propagation, coverage, export)
 pip install humeris-core
@@ -25,14 +55,49 @@ pip install "humeris-core[live]"
 
 # Full suite (core + 66 commercial analysis modules)
 pip install humeris-pro
+```
 
-# Development (editable, from repo)
+### From GitHub Releases
+
+Download `.whl` files from the [Releases](https://github.com/pljeroen/humeris/releases) page:
+
+```bash
+pip install humeris_core-1.26.3-py3-none-any.whl
+pip install humeris_pro-1.26.3-py3-none-any.whl
+```
+
+### Windows executable
+
+Download `humeris-windows-x64.zip` from [Releases](https://github.com/pljeroen/humeris/releases), extract, and run:
+
+```
+humeris.exe -i simulation.json -o output.json
+humeris.exe --serve
+```
+
+No Python installation required.
+
+### Development (from source)
+
+```bash
+git clone https://github.com/pljeroen/humeris.git
+cd humeris
 pip install -e ./packages/core -e ./packages/pro
 ```
 
 **Python**: 3.11, 3.12, 3.13. **Platforms**: Linux, macOS, Windows (pure Python, no compiled extensions).
 
 ## Usage
+
+### Interactive 3D viewer
+
+```bash
+# Launch viewer server (opens browser at http://localhost:8765)
+humeris --serve
+
+# Custom port
+humeris --serve --port 9000
+```
 
 ### Synthetic constellations (Walker shells)
 
@@ -611,11 +676,14 @@ write_czml(cov_packets, "coverage.czml")
 Launch an interactive 3D viewer with on-demand analysis layers:
 
 ```bash
-# Interactive server mode (opens browser)
-python scripts/view_constellation.py --serve
+# Interactive server mode via CLI (opens browser)
+humeris --serve
 
 # Custom port
-python scripts/view_constellation.py --serve --port 9000
+humeris --serve --port 9000
+
+# Or via script directly
+python scripts/view_constellation.py --serve
 
 # Static HTML mode (generates constellation_viewer.html, no server needed)
 python scripts/view_constellation.py
@@ -626,14 +694,14 @@ python scripts/view_constellation.py --open
 
 **Server mode** pre-loads three Walker shells (500/450/400 km, 1584 sats each)
 and live ISS data from CelesTrak. The browser UI supports adding/removing
-constellations, ground stations, and 15 analysis layer types via the API.
+constellations, ground stations, and 21 analysis layer types via the API.
 
 **Static mode** generates a self-contained HTML file (~10 MB) with baked-in
 CZML data. No server required — just open the file in a browser.
 
 ##### Analysis layer types
 
-The viewer dispatches 15 analysis types, each with sensible defaults:
+The viewer dispatches 21 analysis types, each with sensible defaults:
 
 | Type | Visualization | Default parameters |
 |------|---------------|--------------------|
@@ -650,6 +718,14 @@ The viewer dispatches 15 analysis types, each with sensible defaults:
 | `conjunction` | Two-satellite close approach replay with proximity line | states[0] vs states[n/2], ±30 min window, 10s step |
 | `kessler_heatmap` | Altitude × inclination debris density grid | 200-2000 km, 0-180°, 50 km × 10° bins |
 | `conjunction_hazard` | Conjunction screening with NASA-STD-8719.14 hazard levels | 2h window, 100 km threshold, color by ROUTINE/WARNING/CRITICAL |
+| `dop_grid` | Ground heatmap colored by dilution of precision | 10° grid |
+| `radiation` | Satellites colored by radiation environment | 2h duration, 60s step |
+| `beta_angle` | Satellites colored by solar beta angle | Snapshot |
+| `deorbit` | Satellites colored by deorbit compliance status | Cd=2.2, A=0.01 m², m=4 kg |
+| `station_keeping` | Satellites colored by station-keeping ΔV budget | Cd=2.2, A=0.01 m², m=4 kg |
+| `cascade_sir` | SIR epidemic cascade debris evolution | 2h duration, 60s step |
+| `relative_motion` | Relative motion trajectory between two satellites | states[0] vs states[1], 2h duration |
+| `maintenance` | Satellites colored by maintenance schedule status | Cd=2.2, A=0.01 m², m=4 kg |
 | `ground_station` | Station marker + visibility circle + access tracks | 10° min elevation |
 
 ##### Default RF link configuration (Ka-band)
@@ -794,7 +870,7 @@ port interfaces.
 ## Tests
 
 ```bash
-pytest                           # all 3227 tests (offline, no network required)
+pytest                           # all 3236 tests (offline, no network required)
 pytest tests/test_live_data.py   # live CelesTrak tests (requires network)
 ```
 
@@ -865,7 +941,7 @@ results without network access.
 - [Getting Started](docs/getting-started.md) — installation, quickstart, CLI
 - [Simulation JSON](docs/simulation-json.md) — input/output JSON schema
 - [Architecture](docs/architecture.md) — hexagonal design, module categories
-- [Viewer Server](docs/viewer-server.md) — interactive 3D viewer, 15 analysis types
+- [Viewer Server](docs/viewer-server.md) — interactive 3D viewer, 21 analysis types
 - [API Reference](docs/api-reference.md) — HTTP endpoints
 - [Integration Guide](docs/integration-guide.md) — CelesTrak, CesiumJS, custom sources
 - [Export Formats](docs/export-formats.md) — CSV, GeoJSON, CZML

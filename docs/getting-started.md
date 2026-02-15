@@ -9,14 +9,17 @@
 ## Installation
 
 ```bash
-# Core only (synthetic constellations, no external deps)
-pip install .
+# Core MIT package (constellation generation, propagation, coverage, export)
+pip install humeris-core
 
 # With live CelesTrak / SGP4 support
-pip install ".[live]"
+pip install "humeris-core[live]"
 
-# Development (includes pytest)
-pip install ".[dev]"
+# Full suite (core + 66 commercial analysis modules)
+pip install humeris-pro
+
+# Development (editable, from repo)
+pip install -e ./packages/core -e ./packages/pro
 ```
 
 ## Quick start
@@ -49,6 +52,10 @@ iss = celestrak.fetch_satellites(name="ISS (ZARYA)")
 ### Launch the interactive viewer
 
 ```bash
+# Via CLI entry point
+humeris --serve
+
+# Or via script directly
 python scripts/view_constellation.py --serve
 ```
 
@@ -58,7 +65,7 @@ shells and live ISS data. See [Viewer Server](viewer-server.md) for details.
 ### Run tests
 
 ```bash
-pytest                          # 3227 tests, all offline
+pytest                          # 3236 tests, all offline
 pytest tests/test_live_data.py  # live CelesTrak (requires network)
 ```
 
@@ -82,7 +89,7 @@ humeris -i sim.json -o out.json --export-csv sats.csv --export-geojson sats.geoj
 
 - [Simulation JSON](simulation-json.md) — input/output JSON schema
 - [Architecture](architecture.md) — hexagonal design, domain purity
-- [Viewer Server](viewer-server.md) — interactive 3D viewer with 15 analysis types
+- [Viewer Server](viewer-server.md) — interactive 3D viewer with 21 analysis types
 - [API Reference](api-reference.md) — HTTP endpoints
 - [Integration Guide](integration-guide.md) — CelesTrak, CesiumJS, custom sources, reproducibility
 - [Export Formats](export-formats.md) — CSV, GeoJSON, CZML output
