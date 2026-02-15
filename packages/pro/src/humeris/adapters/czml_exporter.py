@@ -85,7 +85,10 @@ def _satellite_description(state: OrbitalState, epoch: datetime) -> str:
     else:
         sso_text = f"No (error: {sso.error_deg_day:.2f}&deg;/day)"
 
-    density = atmospheric_density(alt_km)
+    try:
+        density = atmospheric_density(alt_km)
+    except ValueError:
+        density = 0.0
 
     gt = compute_ground_track_repeat(state)
 

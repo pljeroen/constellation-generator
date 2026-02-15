@@ -182,17 +182,101 @@ def run_live(
     return len(satellites), satellites
 
 
+def _run_serve(port: int = 8765) -> None:
+    """Start the interactive Cesium viewer server with default shells."""
+    try:
+        from humeris.adapters.viewer_server import (
+            LayerManager,
+            create_viewer_server,
+        )
+    except ImportError:
+        print(
+            "Interactive viewer requires humeris-pro.\n"
+            "Install with: pip install humeris-pro",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    import webbrowser
+    from datetime import datetime, timedelta, timezone
+
+    epoch = datetime.now(tz=timezone.utc)
+    mgr = LayerManager(epoch=epoch)
+
+    # Pre-load default Walker shells
+    walker_shells = [s for s in get_default_shells() if s.altitude_km in (500, 450, 400)]
+    for shell in walker_shells:
+        print(f"  Generating {shell.shell_name}...")
+        sats = generate_walker_shell(shell)
+        states = [derive_orbital_state(s, epoch, include_j2=True) for s in sats]
+        mgr.add_layer(
+            name=f"Constellation:{shell.shell_name}",
+            category="Constellation",
+            layer_type="walker",
+            states=states,
+            params={
+                "altitude_km": shell.altitude_km,
+                "inclination_deg": shell.inclination_deg,
+                "num_planes": shell.num_planes,
+                "sats_per_plane": shell.sats_per_plane,
+                "phase_factor": shell.phase_factor,
+                "raan_offset_deg": shell.raan_offset_deg,
+                "shell_name": shell.shell_name,
+            },
+        )
+        print(f"    {len(sats)} satellites")
+
+    # Try to fetch ISS from CelesTrak
+    try:
+        from humeris.adapters.celestrak import CelesTrakAdapter
+        print("  Fetching ISS from CelesTrak...")
+        celestrak = CelesTrakAdapter()
+        iss_sats = celestrak.fetch_satellites(name="ISS (ZARYA)", epoch=epoch)
+        if iss_sats:
+            iss_states = [derive_orbital_state(s, epoch, include_j2=True) for s in iss_sats]
+            mgr.add_layer(
+                name="Constellation:ISS",
+                category="Constellation",
+                layer_type="celestrak",
+                states=iss_states,
+                params={"name": "ISS (ZARYA)"},
+                mode="animated",
+            )
+            print(f"    ISS: {len(iss_sats)} object(s)")
+    except Exception as e:
+        print(f"    ISS fetch skipped: {e}")
+
+    server = create_viewer_server(mgr, port=port)
+    url = f"http://localhost:{port}"
+    print(f"\nInteractive viewer at {url}")
+    print("Press Ctrl+C to stop.\n")
+    webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nServer stopped.")
+        server.shutdown()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generate satellite constellations for simulation (synthetic or live)"
     )
     parser.add_argument(
-        '--input', '-i', required=True,
+        '--input', '-i',
         help="Path to input simulation JSON (with Earth + Satellite template)"
     )
     parser.add_argument(
-        '--output', '-o', required=True,
+        '--output', '-o',
         help="Path to write output simulation JSON"
+    )
+    parser.add_argument(
+        '--serve', action='store_true', default=False,
+        help="Start interactive 3D viewer server (opens browser)"
+    )
+    parser.add_argument(
+        '--port', type=int, default=8765,
+        help="Port for viewer server (default: 8765, used with --serve)"
     )
     parser.add_argument(
         '--base-id', type=int, default=100,
@@ -278,6 +362,15 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if args.serve:
+        _run_serve(port=args.port)
+        return
+
+    if not args.input:
+        parser.error("the following arguments are required: --input/-i")
+    if not args.output:
+        parser.error("the following arguments are required: --output/-o")
 
     try:
         live_mode = args.live_group or args.live_name or args.live_catnr
