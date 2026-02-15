@@ -710,7 +710,7 @@ class TestDomainPurity:
         """adaptive_integration.py must only use stdlib + domain imports."""
         import humeris.domain.adaptive_integration as _mod
         module_path = _mod.__file__
-        with open(module_path) as f:
+        with open(module_path, encoding="utf-8") as f:
             source = f.read()
 
         tree = ast.parse(source)

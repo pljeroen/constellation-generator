@@ -144,7 +144,7 @@ class TestKmlIncludeIsl:
         os.close(fd)
         try:
             KmlExporter().export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             assert "ISL" not in content
         finally:
@@ -175,7 +175,7 @@ class TestBlenderIncludeOrbits:
         os.close(fd)
         try:
             BlenderExporter().export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             assert "curves.new" in content
         finally:
@@ -186,7 +186,7 @@ class TestBlenderIncludeOrbits:
         os.close(fd)
         try:
             BlenderExporter(include_orbits=False).export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             assert "curves.new" not in content
         finally:
@@ -197,7 +197,7 @@ class TestBlenderIncludeOrbits:
         os.close(fd)
         try:
             BlenderExporter(include_orbits=False).export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             count = content.count("primitive_ico_sphere_add")
             assert count == len(satellites)
@@ -213,7 +213,7 @@ class TestBlenderColorByPlane:
         os.close(fd)
         try:
             BlenderExporter().export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             assert "materials.new" not in content
         finally:
@@ -224,7 +224,7 @@ class TestBlenderColorByPlane:
         os.close(fd)
         try:
             BlenderExporter(color_by_plane=True).export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             assert "materials.new" in content
         finally:
@@ -235,7 +235,7 @@ class TestBlenderColorByPlane:
         os.close(fd)
         try:
             BlenderExporter(color_by_plane=True).export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             assert "data.materials.append" in content
         finally:
@@ -249,7 +249,7 @@ class TestBlenderColorByPlane:
             BlenderExporter(color_by_plane=True, include_orbits=False).export(
                 satellites, path, epoch=EPOCH
             )
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             ast.parse(content)
         finally:

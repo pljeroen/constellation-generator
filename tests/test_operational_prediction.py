@@ -142,7 +142,7 @@ class TestComputeManeuverContactFeasibility:
 class TestOperationalPredictionPurity:
     def test_no_external_deps(self):
         import humeris.domain.operational_prediction as mod
-        with open(mod.__file__) as f:
+        with open(mod.__file__, encoding="utf-8") as f:
             tree = ast.parse(f.read())
         allowed = {"math", "numpy", "dataclasses", "datetime", "humeris"}
         for node in ast.walk(tree):

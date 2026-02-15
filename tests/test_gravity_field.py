@@ -344,7 +344,7 @@ class TestDomainPurity:
         """gravity_field.py must only import from stdlib and domain."""
         import humeris.domain.gravity_field as mod
 
-        with open(mod.__file__) as f:
+        with open(mod.__file__, encoding="utf-8") as f:
             tree = ast.parse(f.read())
 
         allowed_top = {"math", "numpy", "dataclasses", "typing", "datetime", "json", "pathlib"}

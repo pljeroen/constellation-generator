@@ -391,7 +391,7 @@ class TestGroundTrackPurity:
     def test_no_external_imports(self):
         import humeris.domain.ground_track as mod
         source_path = mod.__file__
-        with open(source_path) as f:
+        with open(source_path, encoding="utf-8") as f:
             tree = ast.parse(f.read())
 
         allowed_top = {'math', 'numpy', 'dataclasses', 'datetime'}

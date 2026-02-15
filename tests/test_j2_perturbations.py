@@ -149,7 +149,7 @@ class TestJ2Purity:
         import humeris.domain.orbital_mechanics as mod
 
         allowed = {'math', 'numpy', 'dataclasses', 'typing', 'abc', 'enum', '__future__', 'datetime'}
-        with open(mod.__file__) as f:
+        with open(mod.__file__, encoding="utf-8") as f:
             tree = ast.parse(f.read())
 
         for node in ast.walk(tree):

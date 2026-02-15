@@ -72,7 +72,7 @@ class TestCsvEnrichment:
         os.close(fd)
         try:
             CsvSatelliteExporter().export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 reader = csv.reader(f)
                 header = next(reader)
             for field in ENRICHMENT_FIELDS:
@@ -85,7 +85,7 @@ class TestCsvEnrichment:
         os.close(fd)
         try:
             CsvSatelliteExporter().export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 row = next(reader)
             for field in ENRICHMENT_FIELDS:
@@ -98,7 +98,7 @@ class TestCsvEnrichment:
         os.close(fd)
         try:
             CsvSatelliteExporter().export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 row = next(reader)
             alt = float(row['altitude_km'])
@@ -115,7 +115,7 @@ class TestGeoJsonEnrichment:
         os.close(fd)
         try:
             GeoJsonSatelliteExporter().export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             props = data['features'][0]['properties']
             for field in ENRICHMENT_FIELDS:
@@ -128,7 +128,7 @@ class TestGeoJsonEnrichment:
         os.close(fd)
         try:
             GeoJsonSatelliteExporter().export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             props = data['features'][0]['properties']
             for field in ENRICHMENT_FIELDS:
@@ -203,7 +203,7 @@ class TestBlenderEnrichment:
         os.close(fd)
         try:
             BlenderExporter().export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             for field in ENRICHMENT_FIELDS:
                 assert f'["{field}"]' in content, f"Missing custom prop: {field}"
@@ -238,7 +238,7 @@ class TestCelestiaEnrichment:
         os.close(fd)
         try:
             CelestiaExporter().export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             assert "# Altitude" in content or "# altitude" in content
             assert "# Inclination" in content or "# inclination" in content
@@ -254,7 +254,7 @@ class TestSpaceEngineEnrichment:
         os.close(fd)
         try:
             SpaceEngineExporter().export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             assert "// Altitude" in content or "// altitude" in content
             assert "// Inclination" in content or "// inclination" in content
@@ -270,7 +270,7 @@ class TestKspEnrichment:
         os.close(fd)
         try:
             KspExporter().export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             assert "// Altitude" in content or "// altitude" in content
             assert "// Inclination" in content or "// inclination" in content
@@ -286,7 +286,7 @@ class TestStellariumEnrichment:
         os.close(fd)
         try:
             StellariumExporter().export(satellites, path, epoch=EPOCH)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             assert "# Altitude" in content or "# altitude" in content
             assert "Period:" in content or "period:" in content

@@ -195,7 +195,7 @@ class TestISLModulePurity:
         """Only stdlib + domain imports."""
         import ast
         import humeris.domain.inter_satellite_links as mod
-        with open(mod.__file__) as f:
+        with open(mod.__file__, encoding="utf-8") as f:
             tree = ast.parse(f.read())
 
         allowed_stdlib = {"math", "numpy", "dataclasses", "datetime"}

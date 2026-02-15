@@ -336,7 +336,7 @@ class TestCoordinateFramesPurity:
                    '__future__', 'datetime'}
         import humeris.domain.coordinate_frames as _mod
         path = _mod.__file__
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             tree = ast.parse(f.read())
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):

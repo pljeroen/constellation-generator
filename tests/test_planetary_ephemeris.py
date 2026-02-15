@@ -412,7 +412,7 @@ class TestDomainPurity:
     def test_no_external_imports(self):
         import humeris.domain.planetary_ephemeris as _mod
         source_path = _mod.__file__
-        with open(source_path) as f:
+        with open(source_path, encoding="utf-8") as f:
             tree = ast.parse(f.read())
         allowed = {
             "math", "numpy", "datetime", "dataclasses", "typing", "json",

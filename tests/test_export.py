@@ -57,7 +57,7 @@ class TestCsvExporter:
             path = f.name
         try:
             CsvSatelliteExporter().export(sats, path)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 reader = csv.reader(f)
                 header = next(reader)
             expected = [
@@ -77,7 +77,7 @@ class TestCsvExporter:
         try:
             count = CsvSatelliteExporter().export(sats, path)
             assert count == 5
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 lines = f.readlines()
             assert len(lines) == 6  # header + 5 rows
         finally:
@@ -99,7 +99,7 @@ class TestCsvExporter:
             path = f.name
         try:
             CsvSatelliteExporter().export(sats, path)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 row = next(reader)
             lat = float(row['lat_deg'])
@@ -117,7 +117,7 @@ class TestCsvExporter:
         try:
             count = CsvSatelliteExporter().export([], path)
             assert count == 0
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 lines = f.readlines()
             assert len(lines) == 1  # header only
         finally:
@@ -130,7 +130,7 @@ class TestCsvExporter:
             path = f.name
         try:
             CsvSatelliteExporter().export(sats, path)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 row = next(reader)
             # Fallback is J2000 epoch when no sat.epoch and no caller epoch
@@ -148,7 +148,7 @@ class TestCsvExporter:
             path = f.name
         try:
             CsvSatelliteExporter().export(sats, path, epoch=caller_epoch)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 row = next(reader)
             assert '2026-03-20' in row['epoch']
@@ -165,7 +165,7 @@ class TestGeoJsonExporter:
             path = f.name
         try:
             GeoJsonSatelliteExporter().export(sats, path)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             assert data['type'] == 'FeatureCollection'
         finally:
@@ -178,7 +178,7 @@ class TestGeoJsonExporter:
         try:
             count = GeoJsonSatelliteExporter().export(sats, path)
             assert count == 4
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             assert len(data['features']) == 4
         finally:
@@ -191,7 +191,7 @@ class TestGeoJsonExporter:
             path = f.name
         try:
             GeoJsonSatelliteExporter().export(sats, path)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             coords = data['features'][0]['geometry']['coordinates']
             assert len(coords) == 3
@@ -208,7 +208,7 @@ class TestGeoJsonExporter:
             path = f.name
         try:
             GeoJsonSatelliteExporter().export(sats, path)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             assert data['features'][0]['geometry']['type'] == 'Point'
         finally:
@@ -220,7 +220,7 @@ class TestGeoJsonExporter:
             path = f.name
         try:
             GeoJsonSatelliteExporter().export(sats, path)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             props = data['features'][0]['properties']
             assert 'name' in props
@@ -234,7 +234,7 @@ class TestGeoJsonExporter:
             path = f.name
         try:
             GeoJsonSatelliteExporter().export(sats, path)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             props = data['features'][0]['properties']
             assert 'plane_index' in props
@@ -250,7 +250,7 @@ class TestGeoJsonExporter:
         try:
             count = GeoJsonSatelliteExporter().export([], path)
             assert count == 0
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             assert data['features'] == []
         finally:
@@ -261,7 +261,7 @@ class TestExportPurity:
     """Adapter purity: exporters may use stdlib csv/json but no other external deps."""
 
     def _check_imports(self, module_path, allowed_stdlib):
-        with open(module_path) as f:
+        with open(module_path, encoding="utf-8") as f:
             tree = ast.parse(f.read())
 
         allowed_internal = {'humeris'}

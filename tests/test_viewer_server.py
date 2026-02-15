@@ -779,7 +779,7 @@ class TestViewerServerPurity:
     def test_no_external_deps(self):
         import humeris.adapters.viewer_server as mod
 
-        with open(mod.__file__) as f:
+        with open(mod.__file__, encoding="utf-8") as f:
             tree = ast.parse(f.read())
 
         allowed_stdlib = {

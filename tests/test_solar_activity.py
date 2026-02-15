@@ -831,7 +831,7 @@ class TestCalibratedSpaceWeatherData:
             / "packages" / "pro" / "src" / "humeris" / "data"
             / "space_weather_historical.json"
         )
-        with open(data_path) as f:
+        with open(data_path, encoding="utf-8") as f:
             raw = json.load(f)
 
         entries = raw["entries"]
@@ -852,7 +852,7 @@ class TestCalibratedSpaceWeatherData:
             / "packages" / "pro" / "src" / "humeris" / "data"
             / "space_weather_historical.json"
         )
-        with open(data_path) as f:
+        with open(data_path, encoding="utf-8") as f:
             raw = json.load(f)
 
         for entry in raw["entries"]:
@@ -870,7 +870,7 @@ class TestCalibratedSpaceWeatherData:
             / "packages" / "pro" / "src" / "humeris" / "data"
             / "space_weather_historical.json"
         )
-        with open(data_path) as f:
+        with open(data_path, encoding="utf-8") as f:
             raw = json.load(f)
 
         for entry in raw["entries"]:
@@ -888,7 +888,7 @@ class TestCalibratedSpaceWeatherData:
             / "packages" / "pro" / "src" / "humeris" / "data"
             / "space_weather_historical.json"
         )
-        with open(data_path) as f:
+        with open(data_path, encoding="utf-8") as f:
             raw = json.load(f)
 
         # Gather F10.7 by year
@@ -916,7 +916,7 @@ class TestCalibratedSpaceWeatherData:
             / "packages" / "pro" / "src" / "humeris" / "data"
             / "space_weather_historical.json"
         )
-        with open(data_path) as f:
+        with open(data_path, encoding="utf-8") as f:
             raw = json.load(f)
 
         # Extract ~2 years of daily F10.7 during active period
@@ -958,7 +958,7 @@ class TestCalibratedSpaceWeatherData:
             / "packages" / "pro" / "src" / "humeris" / "data"
             / "space_weather_historical.json"
         )
-        with open(data_path) as f:
+        with open(data_path, encoding="utf-8") as f:
             raw = json.load(f)
 
         desc = raw.get("description", "").lower()

@@ -146,7 +146,7 @@ class TestCommunicationAnalysisPurity:
         import humeris.domain.communication_analysis as mod
 
         allowed = {'math', 'numpy', 'dataclasses', 'typing', 'abc', 'enum', '__future__', 'datetime', 'collections'}
-        with open(mod.__file__) as f:
+        with open(mod.__file__, encoding="utf-8") as f:
             tree = ast.parse(f.read())
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):

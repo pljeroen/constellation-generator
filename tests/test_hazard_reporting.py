@@ -757,7 +757,7 @@ class TestHazardReportingPurity:
             'math', 'numpy', 'dataclasses', 'typing', 'abc', 'enum',
             '__future__', 'datetime', 'hashlib', 'json', 'hmac',
         }
-        with open(mod.__file__) as f:
+        with open(mod.__file__, encoding="utf-8") as f:
             tree = ast.parse(f.read())
 
         for node in ast.walk(tree):
