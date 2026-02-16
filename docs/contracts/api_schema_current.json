@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.26.3",
+  "fields": [
+    "run_number",
+    "timestamp_utc",
+    "status",
+    "constellation_repo",
+    "gmat_repo",
+    "comparison",
+    "suncentric_extension",
+    "executive_summary",
+    "replay_bundle"
+  ]
+}

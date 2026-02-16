@@ -31,6 +31,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ./packages/core -e "./packages/pro[dev]"
 
+      - name: Run API compatibility gate
+        run: python scripts/check_api_compat_gate.py
+
       - name: Run tests
         run: pytest tests/ -x -q
 
