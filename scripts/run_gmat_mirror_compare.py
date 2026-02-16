@@ -147,7 +147,7 @@ def main() -> int:
     write_json(out_dir / "humeris_values.json", humeris_values)
     write_json(out_dir / "gmat_values.json", gmat_values)
     (out_dir / "REPORT.md").write_text(_build_report_markdown(payload), encoding="utf-8")
-    (out_root / "LATEST_REPORT").write_text(str(out_dir / "REPORT.md") + "\n", encoding="utf-8")
+    (out_root / "LATEST_REPORT").write_text(f"{out_dir.name}/REPORT.md\n", encoding="utf-8")
 
     print(f"comparison_run={out_dir}")
     print(f"status={comparison['status']}")
