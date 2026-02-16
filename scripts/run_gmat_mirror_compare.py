@@ -72,6 +72,9 @@ def _build_report_markdown(payload: dict) -> str:
     )
     lines.append(f"- GMAT testsuite repo: `{payload['gmat_repo']['repository_url']}`")
     lines.append(f"- GMAT run reference: `{payload['gmat_repo']['run_id']}`")
+    replay_bundle = payload.get("replay_bundle")
+    if replay_bundle:
+        lines.append(f"- Replay bundle: `{replay_bundle}`")
     lines.append("")
     lines.append(
         "This is a reference-comparison report. It is intended as a learning and"

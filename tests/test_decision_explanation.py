@@ -36,9 +36,12 @@ def test_report_contains_executive_summary_confidence_and_limits():
             "known_limitations": ["sun-centric force parity pending"],
             "next_actions": ["promote CI gate"],
         },
+        "replay_bundle": "replay_bundle.json",
     }
     report = module._build_report_markdown(payload)
     assert "## Executive Summary" in report
     assert "Confidence" in report
     assert "known_limitations" not in report
     assert "sun-centric force parity pending" in report
+    assert "Replay bundle" in report
+    assert "replay_bundle.json" in report
