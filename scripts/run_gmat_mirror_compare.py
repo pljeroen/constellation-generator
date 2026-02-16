@@ -19,6 +19,7 @@ from humeris.adapters.gmat_mirror import (
     run_humeris_mirror,
     write_json,
 )
+from humeris.domain.replay_bundle import create_replay_bundle
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -229,6 +230,27 @@ def main() -> int:
     write_json(out_dir / "manifest.json", payload)
     write_json(out_dir / "humeris_values.json", humeris_values)
     write_json(out_dir / "gmat_values.json", gmat_values)
+    bundle_path = create_replay_bundle(
+        out_dir=out_dir,
+        inputs={
+            "gmat_run_id": run_dir.name,
+            "gmat_manifest": str(Path(run_dir.name) / "manifest.json"),
+            "comparison_cases": [row["case"] for row in comparison["cases"]],
+        },
+        outputs={
+            "status": comparison["status"],
+            "manifest": "manifest.json",
+            "humeris_values": "humeris_values.json",
+            "gmat_values": "gmat_values.json",
+            "report": "REPORT.md",
+        },
+        software_refs={
+            "constellation_generator": cg_git.commit,
+            "gmat_testsuite": gmat_git.commit,
+        },
+    )
+    payload["replay_bundle"] = str(bundle_path.name)
+    write_json(out_dir / "manifest.json", payload)
     (out_dir / "REPORT.md").write_text(_build_report_markdown(payload), encoding="utf-8")
     (out_root / "LATEST_REPORT").write_text(f"{out_dir.name}/REPORT.md\n", encoding="utf-8")
 
