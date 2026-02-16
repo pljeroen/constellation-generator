@@ -69,6 +69,18 @@ def _rmag_km(pos_eci: tuple[float, float, float]) -> float:
     return math.sqrt(pos_eci[0] ** 2 + pos_eci[1] ** 2 + pos_eci[2] ** 2) / 1000.0
 
 
+def _specific_energy_sign(
+    pos_eci: tuple[float, float, float],
+    vel_eci: tuple[float, float, float],
+) -> int:
+    r = math.sqrt(pos_eci[0] ** 2 + pos_eci[1] ** 2 + pos_eci[2] ** 2)
+    v2 = vel_eci[0] ** 2 + vel_eci[1] ** 2 + vel_eci[2] ** 2
+    eps = 0.5 * v2 - OrbitalConstants.MU_EARTH / r
+    if abs(eps) < 1e-9:
+        return 0
+    return 1 if eps > 0.0 else -1
+
+
 def _build_state(
     *,
     sma_km: float,
@@ -202,6 +214,21 @@ def run_humeris_mirror() -> dict[str, dict[str, float]]:
         "endECC": o1["ecc"],
         "endINC": o1["inc_deg"],
         "endRMAG": _rmag_km(o_end.position_eci),
+        "elapsedDays": 120.0,
+    }
+
+    # Mirror 4: Sun-centric extension scaffold.
+    # Current architecture still uses Earth-mu in this mirror path, but we emit
+    # dedicated metrics to support explicit assumption and residual tracking.
+    out["advanced_oumuamua_suncentric"] = {
+        "startECC": o0["ecc"],
+        "startINC": o0["inc_deg"],
+        "startRMAG": _rmag_km(o_start.position_eci),
+        "endECC": o1["ecc"],
+        "endINC": o1["inc_deg"],
+        "endRMAG": _rmag_km(o_end.position_eci),
+        "startEnergySign": _specific_energy_sign(o_start.position_eci, o_start.velocity_eci),
+        "endEnergySign": _specific_energy_sign(o_end.position_eci, o_end.velocity_eci),
         "elapsedDays": 120.0,
     }
     return out
@@ -375,4 +402,3 @@ def find_gmat_run_dir(gmat_repo: Path, run_id: str | None = None) -> Path:
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
