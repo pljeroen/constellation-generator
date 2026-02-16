@@ -9,6 +9,7 @@ import pytest
 
 from humeris.domain.omm import parse_omm_record, OrbitalElements
 from humeris.domain.orbital_mechanics import OrbitalConstants
+from humeris.domain.ccsds_contracts import CcsdsValidationError
 
 
 sgp4 = pytest.importorskip("sgp4", reason="sgp4 not installed (pip install humeris[live])")
@@ -104,6 +105,13 @@ class TestSGP4Adapter:
         sat = SGP4Adapter().omm_to_satellite(SAMPLE_OMM)
         v_km_s = math.sqrt(sum(v**2 for v in sat.velocity_eci)) / 1000
         assert 7.0 < v_km_s < 8.5
+
+    def test_invalid_omm_fails_loudly_with_contract_error(self):
+        from humeris.adapters.celestrak import SGP4Adapter
+        bad = dict(SAMPLE_OMM)
+        bad.pop("MEAN_MOTION")
+        with pytest.raises(CcsdsValidationError, match="missing required fields"):
+            SGP4Adapter().omm_to_satellite(bad)
 
 
 # ── CelesTrak adapter (network) ─────────────────────────────────────

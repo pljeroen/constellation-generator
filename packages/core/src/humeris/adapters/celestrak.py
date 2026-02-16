@@ -25,6 +25,7 @@ from urllib.parse import quote
 
 from humeris.ports.orbital_data import OrbitalDataSource
 from humeris.domain.constellation import Satellite
+from humeris.domain.ccsds_contracts import validate_omm_record
 from humeris.domain.omm import parse_omm_record
 
 
@@ -76,7 +77,9 @@ class SGP4Adapter:
             Satellite with ECI position (m) and velocity (m/s).
         """
         Satrec, WGS72, jday = _require_sgp4()
-        elements = parse_omm_record(omm_record)
+        # Contract-boundary validation: fail loud on malformed near-valid records.
+        validated_record = validate_omm_record(omm_record)
+        elements = parse_omm_record(validated_record)
 
         sat = Satrec()
         sat.sgp4init(

@@ -121,6 +121,21 @@ class TestConcurrentCelesTrakAdapter:
         # 4 valid records minus the bad one = at least 3
         assert len(satellites) >= 3
 
+    def test_graceful_contract_validation_failure(self):
+        """Malformed OMM records are skipped while valid records still return."""
+        from humeris.adapters.concurrent_celestrak import (
+            ConcurrentCelesTrakAdapter,
+        )
+        bad_record = dict(SAMPLE_OMM_RECORDS[0])
+        bad_record.pop("MEAN_MOTION")
+        records = [bad_record] + SAMPLE_OMM_RECORDS[1:5]
+
+        adapter = ConcurrentCelesTrakAdapter()
+        with patch.object(adapter, '_fetch_json', return_value=records):
+            satellites = adapter.fetch_satellites(group="TEST")
+
+        assert len(satellites) >= 3
+
     def test_single_http_request_per_call(self):
         """Only 1 HTTP request per fetch_satellites call (concurrency = SGP4 only)."""
         from humeris.adapters.concurrent_celestrak import (
