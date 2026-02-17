@@ -20,6 +20,7 @@ from humeris.adapters.gmat_mirror import (
     write_json,
 )
 from humeris.domain.replay_bundle import create_replay_bundle
+from humeris.domain.conjunction_profiles import evaluate_profiled_screening
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -145,7 +146,63 @@ def _build_report_markdown(payload: dict) -> str:
             lines.append("- none recorded")
         lines.append("")
 
+    profile_annex = payload.get("profile_behavior_annex")
+    if isinstance(profile_annex, dict):
+        lines.append("## Conjunction Profile Behavior Annex")
+        scenario = profile_annex.get("scenario_input", {})
+        if scenario:
+            lines.append(
+                f"- Scenario input: miss_distance_m={_fmt_number(scenario.get('miss_distance_m'))}, "
+                f"base_collision_probability={_fmt_number(scenario.get('base_collision_probability'))}"
+            )
+        rows = profile_annex.get("profiles", [])
+        if rows:
+            lines.append("")
+            lines.append("| Profile | Version | Flagged | Pc Lower | Pc Nominal | Pc Upper |")
+            lines.append("|---|---|:---:|---:|---:|---:|")
+            for row in rows:
+                band = row.get("collision_probability_band", {})
+                lines.append(
+                    f"| `{row.get('id')}` | `{row.get('version')}` | "
+                    f"{'yes' if row.get('flagged') else 'no'} | "
+                    f"{_fmt_number(band.get('lower'))} | "
+                    f"{_fmt_number(band.get('nominal'))} | "
+                    f"{_fmt_number(band.get('upper'))} |"
+                )
+        lines.append("")
+
     return "\n".join(lines) + "\n"
+
+
+def _build_profile_behavior_annex() -> dict[str, object]:
+    scenario_input = {
+        "miss_distance_m": 12000.0,
+        "base_collision_probability": 2.0e-5,
+    }
+    profiles: list[dict[str, object]] = []
+    for profile_name in ("conservative", "nominal", "aggressive"):
+        out = evaluate_profiled_screening(
+            miss_distance_m=scenario_input["miss_distance_m"],
+            base_collision_probability=scenario_input["base_collision_probability"],
+            profile_name=profile_name,
+        )
+        band = out["output"]["collision_probability_band"]
+        profiles.append(
+            {
+                "id": out["profile"]["id"],
+                "version": out["profile"]["version"],
+                "flagged": out["output"]["flagged"],
+                "collision_probability_band": {
+                    "lower": band["lower"],
+                    "nominal": band["nominal"],
+                    "upper": band["upper"],
+                },
+            }
+        )
+    return {
+        "scenario_input": scenario_input,
+        "profiles": profiles,
+    }
 
 
 def main() -> int:
@@ -229,6 +286,7 @@ def main() -> int:
                 "Capture deterministic replay bundle for each parity run.",
             ],
         },
+        "profile_behavior_annex": _build_profile_behavior_annex(),
     }
     write_json(out_dir / "manifest.json", payload)
     write_json(out_dir / "humeris_values.json", humeris_values)
@@ -254,6 +312,7 @@ def main() -> int:
     )
     payload["replay_bundle"] = str(bundle_path.name)
     write_json(out_dir / "manifest.json", payload)
+    write_json(out_dir / "profile_behavior_annex.json", payload["profile_behavior_annex"])
     (out_dir / "REPORT.md").write_text(_build_report_markdown(payload), encoding="utf-8")
     (out_root / "LATEST_REPORT").write_text(f"{out_dir.name}/REPORT.md\n", encoding="utf-8")
 
