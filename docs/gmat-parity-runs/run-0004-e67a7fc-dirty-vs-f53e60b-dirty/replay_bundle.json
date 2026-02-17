@@ -1,0 +1,24 @@
+{
+  "schema_version": "replay_bundle_v1",
+  "inputs": {
+    "gmat_run_id": "run-0009-f53e60b-clean",
+    "gmat_manifest": "run-0009-f53e60b-clean/manifest.json",
+    "comparison_cases": [
+      "basic_leo_two_body",
+      "advanced_j2_raan_drift",
+      "advanced_oumuamua_hyperbolic"
+    ]
+  },
+  "outputs": {
+    "status": "pass",
+    "manifest": "manifest.json",
+    "humeris_values": "humeris_values.json",
+    "gmat_values": "gmat_values.json",
+    "report": "REPORT.md"
+  },
+  "software_refs": {
+    "constellation_generator": "e67a7fc",
+    "gmat_testsuite": "f53e60b"
+  },
+  "bundle_hash": "a2c32b5a687525bd171a64ee1959eb19a2d0fe5d496bae408d09d9f56f46688e"
+}

@@ -1,0 +1,43 @@
+{
+  "runs": [
+    {
+      "run_id": "run-0004-e67a7fc-dirty-vs-f53e60b-dirty",
+      "scenario_input": {
+        "miss_distance_m": 12000.0,
+        "base_collision_probability": 2e-05
+      },
+      "profiles": [
+        {
+          "id": "conservative",
+          "version": "v1",
+          "flagged": true,
+          "collision_probability_band": {
+            "lower": 2.1000000000000002e-05,
+            "nominal": 3.0000000000000004e-05,
+            "upper": 3.9000000000000006e-05
+          }
+        },
+        {
+          "id": "nominal",
+          "version": "v1",
+          "flagged": true,
+          "collision_probability_band": {
+            "lower": 1.4e-05,
+            "nominal": 2e-05,
+            "upper": 2.6000000000000002e-05
+          }
+        },
+        {
+          "id": "aggressive",
+          "version": "v1",
+          "flagged": false,
+          "collision_probability_band": {
+            "lower": 1.0500000000000001e-05,
+            "nominal": 1.5000000000000002e-05,
+            "upper": 1.9500000000000003e-05
+          }
+        }
+      ]
+    }
+  ]
+}

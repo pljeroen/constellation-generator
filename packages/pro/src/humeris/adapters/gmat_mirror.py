@@ -407,16 +407,43 @@ def compare_against_gmat(
 
 def find_gmat_run_dir(gmat_repo: Path, run_id: str | None = None) -> Path:
     runs_root = gmat_repo / "docs" / "test-runs"
-    resolved_id = run_id
-    if resolved_id is None:
-        latest_file = runs_root / "LATEST"
-        if not latest_file.exists():
-            raise FileNotFoundError(f"GMAT LATEST file missing: {latest_file}")
-        resolved_id = latest_file.read_text(encoding="utf-8").strip()
-    run_dir = runs_root / resolved_id
-    if not run_dir.exists():
-        raise FileNotFoundError(f"GMAT run directory not found: {run_dir}")
-    return run_dir
+    required_files = (
+        "cases/basic_leo_two_body/basic_leo_two_body_results.txt",
+        "cases/advanced_j2_raan_drift/advanced_j2_raan_drift_results.txt",
+        "cases/advanced_oumuamua_hyperbolic/advanced_oumuamua_hyperbolic_results.txt",
+    )
+
+    def has_required_artifacts(candidate: Path) -> bool:
+        return all((candidate / rel).exists() for rel in required_files)
+
+    if run_id is not None:
+        run_dir = runs_root / run_id
+        if not run_dir.exists():
+            raise FileNotFoundError(f"GMAT run directory not found: {run_dir}")
+        if not has_required_artifacts(run_dir):
+            raise FileNotFoundError(
+                f"GMAT run directory missing parity artifacts: {run_dir}"
+            )
+        return run_dir
+
+    latest_file = runs_root / "LATEST"
+    candidates: list[str] = []
+    if latest_file.exists():
+        latest_id = latest_file.read_text(encoding="utf-8").strip()
+        if latest_id:
+            candidates.append(latest_id)
+    for d in sorted(runs_root.glob("run-*"), reverse=True):
+        if d.is_dir() and d.name not in candidates:
+            candidates.append(d.name)
+
+    for run_name in candidates:
+        run_dir = runs_root / run_name
+        if run_dir.exists() and has_required_artifacts(run_dir):
+            return run_dir
+
+    raise FileNotFoundError(
+        f"No GMAT run with required parity artifacts found under {runs_root}"
+    )
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:

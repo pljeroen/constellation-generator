@@ -58,3 +58,28 @@ def test_compare_against_local_gmat_artifacts_if_available():
         assert row["status"] in {"pass", "fail"}
         assert row["metrics"]
 
+
+def test_find_gmat_run_dir_falls_back_to_latest_complete_snapshot(tmp_path: Path):
+    runs_root = tmp_path / "docs" / "test-runs"
+    run_tier1 = runs_root / "run-0009-example-clean"
+    run_tier2 = runs_root / "run-0010-example-clean"
+    run_tier1.mkdir(parents=True)
+    run_tier2.mkdir(parents=True)
+    (runs_root / "LATEST").write_text("run-0010-example-clean\n", encoding="utf-8")
+
+    # Tier2-only snapshot: no parity-case files.
+    (run_tier2 / "cases" / "conjunction_screening_heuristic").mkdir(parents=True)
+
+    # Prior tier1 snapshot with required parity artifacts.
+    basic = run_tier1 / "cases" / "basic_leo_two_body" / "basic_leo_two_body_results.txt"
+    j2 = run_tier1 / "cases" / "advanced_j2_raan_drift" / "advanced_j2_raan_drift_results.txt"
+    hyp = run_tier1 / "cases" / "advanced_oumuamua_hyperbolic" / "advanced_oumuamua_hyperbolic_results.txt"
+    basic.parent.mkdir(parents=True)
+    j2.parent.mkdir(parents=True)
+    hyp.parent.mkdir(parents=True)
+    basic.write_text("1 2 3 4 5 6 7\n", encoding="utf-8")
+    j2.write_text("1 2 3 4 5 6 7\n", encoding="utf-8")
+    hyp.write_text("1 2 3 4 5 6 7\n", encoding="utf-8")
+
+    picked = find_gmat_run_dir(tmp_path)
+    assert picked.name == "run-0009-example-clean"
