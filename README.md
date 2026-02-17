@@ -1016,8 +1016,8 @@ extensions.
 
 ## Credits
 
-Written by Jeroen Visser. Inspired by Scott Manley's orbital mechanics
-visualizations.
+Written by Claude and Codex, directed by Jeroen Visser. Inspired by Scott
+Manley's orbital mechanics visualizations.
 
 ## What the commercial license provides
 
