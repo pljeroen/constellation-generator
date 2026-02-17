@@ -44,6 +44,27 @@ def _next_run_dir(out_root: Path, cg_label: str, gmat_label: str) -> tuple[Path,
     return run_dir, run_number
 
 
+def _update_profile_behavior_history(
+    out_root: Path,
+    run_id: str,
+    profile_behavior_annex: dict[str, object],
+) -> Path:
+    history_path = out_root / "profile_behavior_history.json"
+    if history_path.exists():
+        history = json.loads(history_path.read_text(encoding="utf-8"))
+    else:
+        history = {"runs": []}
+    history["runs"].append(
+        {
+            "run_id": run_id,
+            "scenario_input": profile_behavior_annex.get("scenario_input", {}),
+            "profiles": profile_behavior_annex.get("profiles", []),
+        }
+    )
+    history_path.write_text(json.dumps(history, indent=2) + "\n", encoding="utf-8")
+    return history_path
+
+
 def _fmt_number(value: object) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -76,6 +97,9 @@ def _build_report_markdown(payload: dict) -> str:
     replay_bundle = payload.get("replay_bundle")
     if replay_bundle:
         lines.append(f"- Replay bundle: `{replay_bundle}`")
+    profile_history = payload.get("profile_behavior_history")
+    if profile_history:
+        lines.append(f"- Profile behavior history: `{profile_history}`")
     lines.append("")
     lines.append(
         "This is a reference-comparison report. It is intended as a learning and"
@@ -313,6 +337,13 @@ def main() -> int:
     payload["replay_bundle"] = str(bundle_path.name)
     write_json(out_dir / "manifest.json", payload)
     write_json(out_dir / "profile_behavior_annex.json", payload["profile_behavior_annex"])
+    history_path = _update_profile_behavior_history(
+        out_root=out_root,
+        run_id=out_dir.name,
+        profile_behavior_annex=payload["profile_behavior_annex"],
+    )
+    payload["profile_behavior_history"] = str(history_path.name)
+    write_json(out_dir / "manifest.json", payload)
     (out_dir / "REPORT.md").write_text(_build_report_markdown(payload), encoding="utf-8")
     (out_root / "LATEST_REPORT").write_text(f"{out_dir.name}/REPORT.md\n", encoding="utf-8")
 

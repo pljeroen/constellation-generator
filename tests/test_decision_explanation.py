@@ -37,6 +37,7 @@ def test_report_contains_executive_summary_confidence_and_limits():
             "next_actions": ["promote CI gate"],
         },
         "replay_bundle": "replay_bundle.json",
+        "profile_behavior_history": "profile_behavior_history.json",
     }
     report = module._build_report_markdown(payload)
     assert "## Executive Summary" in report
@@ -45,3 +46,5 @@ def test_report_contains_executive_summary_confidence_and_limits():
     assert "sun-centric force parity pending" in report
     assert "Replay bundle" in report
     assert "replay_bundle.json" in report
+    assert "Profile behavior history" in report
+    assert "profile_behavior_history.json" in report
