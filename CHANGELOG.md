@@ -2,6 +2,46 @@
 
 All notable changes to this project are documented here.
 
+## [1.27.0] - 2026-02-17
+
+### Comparative validation expansion
+
+- Added expanded GMAT-vs-Humeris comparative matrix tests covering:
+  - time-series OEM endpoint parity checks
+  - force-model matrix floor cases
+  - maneuver sample parity checks
+  - conjunction profile backtesting proxy checks
+  - deorbit trend backtesting proxy checks
+  - multi-cycle CCSDS provenance roundtrip invariants
+  - cross-propagator sanity checks (GMAT class + SGP4 + Humeris)
+  - cross-suite artifact linkage checks
+- Added adapter-level OMM contract enforcement at CelesTrak boundary using
+  `validate_omm_record()` before SGP4 conversion.
+- Added CCSDS envelope JSON IO helpers in `json_io` adapter with integrity
+  validation on read.
+
+### Parity/reporting and reproducibility
+
+- GMAT parity reports now include:
+  - replay bundle path in report header
+  - profile behavior annex table
+  - profile behavior history pointer
+- Parity runner now emits:
+  - `replay_bundle.json`
+  - `profile_behavior_annex.json`
+  - cross-run `profile_behavior_history.json`
+
+### CI and release governance
+
+- Added API compatibility gate script and wired it into release workflow.
+- Added machine-readable schema diff generator and included
+  `api_schema_diff.json` in release artifacts.
+
+### Versioning
+
+- Bumped package versions to `1.27.0` (`humeris-core`, `humeris-pro`).
+- Updated CelesTrak adapter User-Agent string to `Humeris/1.27.0`.
+
 ## [1.26.3] - 2026-02-16
 
 ### CLI and viewer

@@ -1,6 +1,6 @@
 # Humeris
 
-[![Version](https://img.shields.io/badge/version-1.26.3-blue.svg)](packages/core/pyproject.toml) [![Python](https://img.shields.io/badge/python-3.11_%7C_3.12_%7C_3.13-blue.svg)](packages/core/pyproject.toml) [![Tests](https://img.shields.io/badge/tests-3236_passing-brightgreen.svg)](tests/) [![License](https://img.shields.io/badge/license-MIT_(core)-green.svg)](LICENSE) [![License](https://img.shields.io/badge/license-Commercial_(pro)-red.svg)](COMMERCIAL-LICENSE.md) [![Architecture](https://img.shields.io/badge/architecture-hexagonal-purple.svg)](docs/architecture.md)
+[![Version](https://img.shields.io/badge/version-1.27.0-blue.svg)](packages/core/pyproject.toml) [![Python](https://img.shields.io/badge/python-3.11_%7C_3.12_%7C_3.13-blue.svg)](packages/core/pyproject.toml) [![Tests](https://img.shields.io/badge/tests-3272_passing-brightgreen.svg)](tests/) [![License](https://img.shields.io/badge/license-MIT_(core)-green.svg)](LICENSE) [![License](https://img.shields.io/badge/license-Commercial_(pro)-red.svg)](COMMERCIAL-LICENSE.md) [![Architecture](https://img.shields.io/badge/architecture-hexagonal-purple.svg)](docs/architecture.md)
 
 Generate Walker constellation satellite shells and fetch live orbital data for orbit simulation tools.
 
@@ -83,8 +83,8 @@ pip install humeris-pro
 Download `.whl` files from the [Releases](https://github.com/pljeroen/humeris/releases) page:
 
 ```bash
-pip install humeris_core-1.26.3-py3-none-any.whl
-pip install humeris_pro-1.26.3-py3-none-any.whl
+pip install humeris_core-1.27.0-py3-none-any.whl
+pip install humeris_pro-1.27.0-py3-none-any.whl
 ```
 
 ### Windows executable
@@ -891,7 +891,7 @@ port interfaces.
 ## Tests
 
 ```bash
-pytest                           # all 3236 tests (offline, no network required)
+pytest                           # all 3272 tests (offline, no network required)
 pytest tests/test_live_data.py   # live CelesTrak tests (requires network)
 ```
 
@@ -922,6 +922,13 @@ The mirror covers:
 - `basic_leo_two_body`
 - `advanced_j2_raan_drift`
 - `advanced_oumuamua_hyperbolic` (regime parity: hyperbolic behavior checks)
+- `advanced_oumuamua_suncentric` (high-fidelity extension with third-body + SRP force stack)
+
+Additional comparative artifacts per run:
+
+- `profile_behavior_annex.json` — conservative/nominal/aggressive screening behavior
+- `profile_behavior_history.json` — cross-run profile behavior ledger
+- `replay_bundle.json` — deterministic replay package for incident/debug reproduction
 
 ### Validated against
 
