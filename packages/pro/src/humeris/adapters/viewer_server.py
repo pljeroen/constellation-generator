@@ -14,7 +14,7 @@ Usage:
 
 import json
 import logging
-import uuid
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import socketserver
@@ -180,6 +180,7 @@ class LayerState:
     states: list[OrbitalState]
     params: dict[str, Any]
     czml: list[dict[str, Any]]
+    source_layer_id: str = ""  # BUG-028: explicit source reference for analysis layers
 
 
 def _generate_czml(
@@ -460,6 +461,7 @@ class LayerManager:
         self._counter = 0
         self.duration = _DEFAULT_DURATION
         self.step = _DEFAULT_STEP
+        self._lock = threading.RLock()
 
     def _next_id(self) -> str:
         self._counter += 1
@@ -473,27 +475,35 @@ class LayerManager:
         states: list[OrbitalState],
         params: dict[str, Any],
         mode: str | None = None,
+        source_layer_id: str = "",
+        visible: bool = True,
     ) -> str:
         """Add a visualization layer. Returns the layer ID."""
         if mode is None:
             mode = "snapshot" if len(states) > _SNAPSHOT_THRESHOLD else "animated"
 
-        layer_id = self._next_id()
-        czml = _generate_czml(
-            layer_type, mode, states, self.epoch, name, params,
-        )
-        self.layers[layer_id] = LayerState(
-            layer_id=layer_id,
-            name=name,
-            category=category,
-            layer_type=layer_type,
-            mode=mode,
-            visible=True,
-            states=states,
-            params=params,
-            czml=czml,
-        )
-        return layer_id
+        # Reserve ID under lock, then generate CZML outside (can be slow)
+        with self._lock:
+            layer_id = self._next_id()
+
+        # Copy params so _generate_czml mutations don't leak to caller
+        gen_params = dict(params)
+        czml = _generate_czml(layer_type, mode, states, self.epoch, name, gen_params)
+
+        with self._lock:
+            self.layers[layer_id] = LayerState(
+                layer_id=layer_id,
+                name=name,
+                category=category,
+                layer_type=layer_type,
+                mode=mode,
+                visible=visible,
+                states=states,
+                params=gen_params,
+                czml=czml,
+                source_layer_id=source_layer_id,
+            )
+            return layer_id
 
     def add_ground_station(
         self,
@@ -523,98 +533,134 @@ class LayerManager:
 
     def remove_layer(self, layer_id: str) -> None:
         """Remove a layer by ID. Raises KeyError if not found."""
-        if layer_id not in self.layers:
-            raise KeyError(f"Layer not found: {layer_id}")
-        del self.layers[layer_id]
+        with self._lock:
+            if layer_id not in self.layers:
+                raise KeyError(f"Layer not found: {layer_id}")
+            del self.layers[layer_id]
 
     def update_layer(
         self,
         layer_id: str,
         mode: str | None = None,
         visible: bool | None = None,
+        name: str | None = None,
     ) -> None:
-        """Update layer mode and/or visibility. Raises KeyError if not found."""
-        if layer_id not in self.layers:
-            raise KeyError(f"Layer not found: {layer_id}")
-        layer = self.layers[layer_id]
-        if visible is not None:
-            layer.visible = visible
-        if mode is not None and mode != layer.mode:
-            layer.mode = mode
-            layer.czml = _generate_czml(
-                layer.layer_type, mode, layer.states,
-                self.epoch, layer.name, layer.params,
-            )
+        """Update layer mode, visibility, and/or name. Raises KeyError if not found."""
+        regen_args = None
+        with self._lock:
+            if layer_id not in self.layers:
+                raise KeyError(f"Layer not found: {layer_id}")
+            layer = self.layers[layer_id]
+            if visible is not None:
+                layer.visible = visible
+            if name is not None:
+                layer.name = name
+            if mode is not None and mode != layer.mode:
+                layer.mode = mode
+                regen_args = (layer.layer_type, mode, layer.states,
+                              self.epoch, layer.name, layer.params)
+        if regen_args is not None:
+            new_czml = _generate_czml(*regen_args)
+            with self._lock:
+                if layer_id in self.layers:
+                    self.layers[layer_id].czml = new_czml
 
     def get_state(self) -> dict[str, Any]:
         """Return all layer metadata (no CZML data)."""
-        layers_info = []
-        for layer in self.layers.values():
-            info: dict[str, Any] = {
-                "layer_id": layer.layer_id,
-                "name": layer.name,
-                "category": layer.category,
-                "layer_type": layer.layer_type,
-                "mode": layer.mode,
-                "visible": layer.visible,
-                "num_entities": max(0, len(layer.czml) - 1),
-                "params": {
-                    k: v for k, v in layer.params.items()
-                    if not k.startswith("_")
-                },
+        with self._lock:
+            layers_info = []
+            for layer in self.layers.values():
+                info: dict[str, Any] = {
+                    "layer_id": layer.layer_id,
+                    "name": layer.name,
+                    "category": layer.category,
+                    "layer_type": layer.layer_type,
+                    "mode": layer.mode,
+                    "visible": layer.visible,
+                    "num_entities": max(0, len(layer.czml) - 1),
+                    "params": {
+                        k: v for k, v in layer.params.items()
+                        if not k.startswith("_")
+                    },
+                }
+                if "_capped_from" in layer.params:
+                    info["capped_from"] = layer.params["_capped_from"]
+                if layer.layer_type in _LEGENDS:
+                    info["legend"] = _LEGENDS[layer.layer_type]
+                layers_info.append(info)
+            return {
+                "epoch": self.epoch.isoformat(),
+                "duration_s": self.duration.total_seconds(),
+                "step_s": self.step.total_seconds(),
+                "layers": layers_info,
             }
-            if "_capped_from" in layer.params:
-                info["capped_from"] = layer.params["_capped_from"]
-            if layer.layer_type in _LEGENDS:
-                info["legend"] = _LEGENDS[layer.layer_type]
-            layers_info.append(info)
-        return {
-            "epoch": self.epoch.isoformat(),
-            "duration_s": self.duration.total_seconds(),
-            "step_s": self.step.total_seconds(),
-            "layers": layers_info,
-        }
 
     def recompute_analysis(self, layer_id: str, params: dict[str, Any]) -> None:
         """Recompute an analysis layer with updated params."""
-        if layer_id not in self.layers:
-            raise KeyError(f"Layer not found: {layer_id}")
-        layer = self.layers[layer_id]
-        # Merge new params (preserve internal _ params)
-        internal = {k: v for k, v in layer.params.items() if k.startswith("_")}
-        layer.params = {**params, **internal}
-        layer.czml = _generate_czml(
-            layer.layer_type, layer.mode, layer.states,
-            self.epoch, layer.name, layer.params,
-        )
+        with self._lock:
+            if layer_id not in self.layers:
+                raise KeyError(f"Layer not found: {layer_id}")
+            layer = self.layers[layer_id]
+            # Merge new params (preserve internal _ params)
+            internal = {k: v for k, v in layer.params.items() if k.startswith("_")}
+            new_params = {**params, **internal}
+            layer_type = layer.layer_type
+            mode = layer.mode
+            states = layer.states
+            name = layer.name
+
+        # Generate CZML outside lock (can be slow)
+        new_czml = _generate_czml(layer_type, mode, states, self.epoch, name, new_params)
+
+        # Swap atomically (BUG-015)
+        with self._lock:
+            if layer_id in self.layers:
+                self.layers[layer_id].params = new_params
+                self.layers[layer_id].czml = new_czml
 
     def save_session(self) -> dict[str, Any]:
         """Serialize current session state for save/restore."""
-        layers = []
-        for layer in self.layers.values():
-            layers.append({
-                "name": layer.name,
-                "category": layer.category,
-                "layer_type": layer.layer_type,
-                "mode": layer.mode,
-                "visible": layer.visible,
-                "params": {
-                    k: v for k, v in layer.params.items()
-                    if not k.startswith("_")
-                },
-            })
-        return {
-            "epoch": self.epoch.isoformat(),
-            "duration_s": self.duration.total_seconds(),
-            "step_s": self.step.total_seconds(),
-            "layers": layers,
-        }
+        with self._lock:
+            layers = []
+            # Build index of layer_id -> position for source references
+            layer_ids = list(self.layers.keys())
+            for layer in self.layers.values():
+                entry: dict[str, Any] = {
+                    "name": layer.name,
+                    "category": layer.category,
+                    "layer_type": layer.layer_type,
+                    "mode": layer.mode,
+                    "visible": layer.visible,
+                    "params": {
+                        k: v for k, v in layer.params.items()
+                        if not k.startswith("_")
+                    },
+                }
+                # For analysis layers, record source constellation index
+                if layer.category == "Analysis" and layer.source_layer_id:
+                    if layer.source_layer_id in layer_ids:
+                        entry["source_layer_index"] = layer_ids.index(layer.source_layer_id)
+                    else:
+                        # Fallback: identity match for legacy layers
+                        for idx, lid in enumerate(layer_ids):
+                            other = self.layers[lid]
+                            if other.category == "Constellation" and other.states is layer.states:
+                                entry["source_layer_index"] = idx
+                                break
+                layers.append(entry)
+            return {
+                "epoch": self.epoch.isoformat(),
+                "duration_s": self.duration.total_seconds(),
+                "step_s": self.step.total_seconds(),
+                "layers": layers,
+            }
 
     def get_czml(self, layer_id: str) -> list[dict[str, Any]]:
         """Return CZML packets for a layer. Raises KeyError if not found."""
-        if layer_id not in self.layers:
-            raise KeyError(f"Layer not found: {layer_id}")
-        return self.layers[layer_id].czml
+        with self._lock:
+            if layer_id not in self.layers:
+                raise KeyError(f"Layer not found: {layer_id}")
+            return self.layers[layer_id].czml
 
 
 class ThreadingHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
@@ -652,10 +698,14 @@ class ConstellationHandler(BaseHTTPRequestHandler):
     _MAX_BODY_SIZE = 10 * 1024 * 1024  # 10 MB
 
     def _read_body(self) -> dict[str, Any]:
-        length = int(self.headers.get("Content-Length", 0))
+        raw_length = self.headers.get("Content-Length", "0")
+        try:
+            length = int(raw_length)
+        except (ValueError, TypeError):
+            raise ValueError(f"Invalid Content-Length: {raw_length}")
         if length == 0:
             return {}
-        if length > self._MAX_BODY_SIZE:
+        if length < 0 or length > self._MAX_BODY_SIZE:
             raise ValueError(
                 f"Request body too large: {length} bytes "
                 f"(max {self._MAX_BODY_SIZE})"
@@ -705,6 +755,8 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                 )
                 port = self.server.server_address[1]
                 self.send_header("Access-Control-Allow-Origin", f"http://localhost:{port}")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
                 self.end_headers()
                 self.wfile.write(json.dumps(czml, indent=2).encode())
             except KeyError:
@@ -742,17 +794,35 @@ class ConstellationHandler(BaseHTTPRequestHandler):
         self._error_response(404, "Not found")
 
     def _handle_add_constellation(self) -> None:
-        body = self._read_body()
+        try:
+            body = self._read_body()
+        except (ValueError, json.JSONDecodeError) as e:
+            self._error_response(400, f"Bad request body: {e}")
+            return
         ctype = body.get("type")
         params = body.get("params", {})
 
         if ctype == "walker":
             try:
+                alt = params["altitude_km"]
+                inc = params["inclination_deg"]
+                nplanes = params["num_planes"]
+                spp = params["sats_per_plane"]
+                if not (100 <= alt <= 100000):
+                    raise ValueError(f"altitude_km must be in [100, 100000], got {alt}")
+                if not (0 <= inc <= 180):
+                    raise ValueError(f"inclination_deg must be in [0, 180], got {inc}")
+                if not (1 <= nplanes <= 100):
+                    raise ValueError(f"num_planes must be in [1, 100], got {nplanes}")
+                if not (1 <= spp <= 100):
+                    raise ValueError(f"sats_per_plane must be in [1, 100], got {spp}")
+                if nplanes * spp > 10000:
+                    raise ValueError(f"Total satellites ({nplanes * spp}) exceeds 10000")
                 config = ShellConfig(
-                    altitude_km=params["altitude_km"],
-                    inclination_deg=params["inclination_deg"],
-                    num_planes=params["num_planes"],
-                    sats_per_plane=params["sats_per_plane"],
+                    altitude_km=alt,
+                    inclination_deg=inc,
+                    num_planes=nplanes,
+                    sats_per_plane=spp,
                     phase_factor=params.get("phase_factor", 1),
                     raan_offset_deg=params.get("raan_offset_deg", 0.0),
                     shell_name=params.get("shell_name", "Walker"),
@@ -809,16 +879,20 @@ class ConstellationHandler(BaseHTTPRequestHandler):
         self._error_response(400, f"Unknown constellation type: {ctype}")
 
     def _handle_add_analysis(self) -> None:
-        body = self._read_body()
+        try:
+            body = self._read_body()
+        except (ValueError, json.JSONDecodeError) as e:
+            self._error_response(400, f"Bad request body: {e}")
+            return
         analysis_type = body.get("type")
         source_layer_id = body.get("source_layer")
         params = body.get("params", {})
 
-        if not source_layer_id or source_layer_id not in self.layer_manager.layers:
-            self._error_response(404, f"Source layer not found: {source_layer_id}")
-            return
-
-        source = self.layer_manager.layers[source_layer_id]
+        with self.layer_manager._lock:
+            if not source_layer_id or source_layer_id not in self.layer_manager.layers:
+                self._error_response(404, f"Source layer not found: {source_layer_id}")
+                return
+            source = self.layer_manager.layers[source_layer_id]
         valid_types = {
             "eclipse", "coverage", "sensor", "isl", "fragility",
             "hazard", "network_eclipse", "coverage_connectivity",
@@ -839,6 +913,7 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                 layer_type=analysis_type,
                 states=source.states,
                 params=params,
+                source_layer_id=source_layer_id,
             )
             self._json_response({"layer_id": layer_id}, 201)
         except (ValueError, TypeError, KeyError, ArithmeticError) as e:
@@ -846,10 +921,21 @@ class ConstellationHandler(BaseHTTPRequestHandler):
             self._error_response(500, f"Analysis generation failed: {e}")
 
     def _handle_add_ground_station(self) -> None:
-        body = self._read_body()
+        try:
+            body = self._read_body()
+        except (ValueError, json.JSONDecodeError) as e:
+            self._error_response(400, f"Bad request body: {e}")
+            return
         name = body.get("name", "Station")
         lat = body.get("lat", 0.0)
         lon = body.get("lon", 0.0)
+
+        if not (-90 <= lat <= 90):
+            self._error_response(400, f"lat must be in [-90, 90], got {lat}")
+            return
+        if not (-180 <= lon <= 180):
+            self._error_response(400, f"lon must be in [-180, 180], got {lon}")
+            return
 
         # Find first constellation layer for access computation
         source_states: list[OrbitalState] = []
@@ -875,22 +961,38 @@ class ConstellationHandler(BaseHTTPRequestHandler):
             self._error_response(500, f"Ground station failed: {e}")
 
     def _handle_load_session(self) -> None:
-        body = self._read_body()
+        try:
+            body = self._read_body()
+        except (ValueError, json.JSONDecodeError) as e:
+            self._error_response(400, f"Bad request body: {e}")
+            return
         session = body.get("session", {})
         layers_data = session.get("layers", [])
 
-        # Restore duration/step if present
-        if "duration_s" in session:
-            self.layer_manager.duration = timedelta(seconds=session["duration_s"])
-        if "step_s" in session:
-            self.layer_manager.step = timedelta(seconds=session["step_s"])
+        if not isinstance(layers_data, list):
+            self._error_response(400, "Session 'layers' must be a list")
+            return
 
-        # Restore walker layers (re-generate from params)
+        # Filter non-dict entries gracefully
+        layers_data = [ld for ld in layers_data if isinstance(ld, dict)]
+
+        # Clear existing layers before loading (BUG-007)
+        with self.layer_manager._lock:
+            self.layer_manager.layers.clear()
+            self.layer_manager._counter = 0
+            # Restore duration/step if present (under same lock)
+            if "duration_s" in session:
+                self.layer_manager.duration = timedelta(seconds=session["duration_s"])
+            if "step_s" in session:
+                self.layer_manager.step = timedelta(seconds=session["step_s"])
+
+        # Pass 1: Restore constellation layers (walker and celestrak)
         restored = 0
+        restored_layers: list[str] = []  # layer_ids in order
         for layer_data in layers_data:
             lt = layer_data.get("layer_type", "")
             params = layer_data.get("params", {})
-            if lt in ("walker", "celestrak") and lt == "walker":
+            if lt in ("walker", "celestrak"):
                 try:
                     config = ShellConfig(
                         altitude_km=params.get("altitude_km", 550),
@@ -906,17 +1008,84 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                         derive_orbital_state(s, self.layer_manager.epoch, include_j2=True)
                         for s in sats
                     ]
-                    self.layer_manager.add_layer(
+                    layer_id = self.layer_manager.add_layer(
                         name=layer_data.get("name", f"Constellation:{config.shell_name}"),
                         category=layer_data.get("category", "Constellation"),
                         layer_type=lt,
                         states=states,
                         params=params,
                         mode=layer_data.get("mode"),
+                        visible=layer_data.get("visible", True),
                     )
+                    restored_layers.append(layer_id)
                     restored += 1
                 except (KeyError, TypeError, ValueError):
-                    pass
+                    restored_layers.append("")
+            else:
+                restored_layers.append("")
+
+        # Pass 1.5: Restore ground station layers
+        for idx, layer_data in enumerate(layers_data):
+            lt = layer_data.get("layer_type", "")
+            if lt != "ground_station":
+                continue
+            params = layer_data.get("params", {})
+            # Find source constellation states for access computation
+            gs_source_states: list[OrbitalState] = []
+            for lid in restored_layers:
+                if lid and lid in self.layer_manager.layers:
+                    layer = self.layer_manager.layers[lid]
+                    if layer.category == "Constellation":
+                        gs_source_states = layer.states
+                        break
+            try:
+                gs_lid = self.layer_manager.add_ground_station(
+                    name=params.get("name", layer_data.get("name", "Station")),
+                    lat_deg=params.get("lat_deg", 0.0),
+                    lon_deg=params.get("lon_deg", 0.0),
+                    source_states=gs_source_states[:_GROUND_STATION_SAT_LIMIT],
+                )
+                restored_layers[idx] = gs_lid
+                restored += 1
+            except (KeyError, TypeError, ValueError):
+                pass
+
+        # Pass 2: Restore analysis layers using source constellation reference
+        for idx, layer_data in enumerate(layers_data):
+            lt = layer_data.get("layer_type", "")
+            if lt in ("walker", "celestrak", "ground_station"):
+                continue
+            params = layer_data.get("params", {})
+            source_idx = layer_data.get("source_layer_index")
+            # Find source constellation states
+            source_states: list[OrbitalState] = []
+            if source_idx is not None and 0 <= source_idx < len(restored_layers):
+                source_lid = restored_layers[source_idx]
+                if source_lid and source_lid in self.layer_manager.layers:
+                    source_states = self.layer_manager.layers[source_lid].states
+            # Fallback: use first constellation layer
+            if not source_states:
+                for lid in restored_layers:
+                    if lid and lid in self.layer_manager.layers:
+                        layer = self.layer_manager.layers[lid]
+                        if layer.category == "Constellation":
+                            source_states = layer.states
+                            break
+            if not source_states:
+                continue
+            try:
+                self.layer_manager.add_layer(
+                    name=layer_data.get("name", f"Analysis:{lt}"),
+                    category=layer_data.get("category", "Analysis"),
+                    layer_type=lt,
+                    states=source_states,
+                    params=params,
+                    mode=layer_data.get("mode"),
+                    visible=layer_data.get("visible", True),
+                )
+                restored += 1
+            except (KeyError, TypeError, ValueError, ArithmeticError):
+                pass
         self._json_response({"restored": restored})
 
     # --- PUT ---
@@ -924,26 +1093,32 @@ class ConstellationHandler(BaseHTTPRequestHandler):
     def do_PUT(self) -> None:
         base, param = self._route_path()
 
-        if base == "/api/layer" and param:
+        try:
             body = self._read_body()
+        except (ValueError, json.JSONDecodeError) as e:
+            self._error_response(400, f"Bad request body: {e}")
+            return
+
+        if base == "/api/layer" and param:
             try:
                 self.layer_manager.update_layer(
                     param,
                     mode=body.get("mode"),
                     visible=body.get("visible"),
+                    name=body.get("name"),
                 )
-                layer = self.layer_manager.layers[param]
-                self._json_response({
-                    "layer_id": layer.layer_id,
-                    "mode": layer.mode,
-                    "visible": layer.visible,
-                })
+                with self.layer_manager._lock:
+                    layer = self.layer_manager.layers[param]
+                    self._json_response({
+                        "layer_id": layer.layer_id,
+                        "mode": layer.mode,
+                        "visible": layer.visible,
+                    })
             except KeyError:
                 self._error_response(404, f"Layer not found: {param}")
             return
 
         if base == "/api/analysis" and param:
-            body = self._read_body()
             params = body.get("params", {})
             try:
                 self.layer_manager.recompute_analysis(param, params)
@@ -955,11 +1130,22 @@ class ConstellationHandler(BaseHTTPRequestHandler):
             return
 
         if base == "/api/settings":
-            body = self._read_body()
-            if "duration_s" in body:
-                self.layer_manager.duration = timedelta(seconds=body["duration_s"])
-            if "step_s" in body:
-                self.layer_manager.step = timedelta(seconds=body["step_s"])
+            dur = body.get("duration_s")
+            step = body.get("step_s")
+            if dur is not None:
+                if not isinstance(dur, (int, float)) or dur <= 0 or dur > 604800:
+                    self._error_response(
+                        400, f"duration_s must be in (0, 604800], got {dur}",
+                    )
+                    return
+                self.layer_manager.duration = timedelta(seconds=dur)
+            if step is not None:
+                if not isinstance(step, (int, float)) or step <= 0 or step > 86400:
+                    self._error_response(
+                        400, f"step_s must be in (0, 86400], got {step}",
+                    )
+                    return
+                self.layer_manager.step = timedelta(seconds=step)
             self._json_response({
                 "duration_s": self.layer_manager.duration.total_seconds(),
                 "step_s": self.layer_manager.step.total_seconds(),

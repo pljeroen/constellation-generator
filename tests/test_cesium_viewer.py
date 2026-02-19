@@ -697,6 +697,288 @@ class TestInteractiveViewerQolPass2:
         assert "loadSession" in html, "Missing load session button/function"
 
 
+class TestInteractiveViewerQolPass3:
+    """QOL Pass 3: Bug fixes, validation, UX improvements, power user features."""
+
+    # --- Bug #2: gatherAnalysisParams missing cd/area/mass ---
+
+    def test_gather_params_includes_all_seven_fields(self):
+        """gatherAnalysisParams() should read all 7 param fields including cd, area, mass."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        # The JS function should read cd, area, and mass fields
+        assert "param-cd" in html  # field exists (already tested)
+        # But the gatherAnalysisParams function must actually read them
+        import re
+        # Find gatherAnalysisParams function body
+        match = re.search(r'function gatherAnalysisParams\(\)\s*\{(.*?)\}', html, re.DOTALL)
+        assert match is not None, "gatherAnalysisParams function not found"
+        fn_body = match.group(1)
+        assert "param-cd" in fn_body, \
+            "gatherAnalysisParams should read param-cd field"
+        assert "param-area" in fn_body, \
+            "gatherAnalysisParams should read param-area field"
+        assert "param-mass" in fn_body, \
+            "gatherAnalysisParams should read param-mass field"
+
+    # --- Bug fix: form validation ---
+
+    def test_walker_altitude_has_min_constraint(self):
+        """Walker altitude input should have min attribute to prevent negative values."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        import re
+        match = re.search(r'<input[^>]*id="w-alt"[^>]*>', html)
+        assert match is not None, "Walker altitude input not found"
+        assert 'min=' in match.group(0), \
+            "Walker altitude should have min attribute"
+
+    def test_ground_station_lat_has_range(self):
+        """Ground station latitude should be constrained to -90..90."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        import re
+        match = re.search(r'<input[^>]*id="gs-lat"[^>]*>', html)
+        assert match is not None, "Ground station latitude input not found"
+        assert 'min=' in match.group(0), \
+            "Ground station latitude should have min attribute"
+        assert 'max=' in match.group(0), \
+            "Ground station latitude should have max attribute"
+
+    def test_ground_station_lon_has_range(self):
+        """Ground station longitude should be constrained to -180..180."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        import re
+        match = re.search(r'<input[^>]*id="gs-lon"[^>]*>', html)
+        assert match is not None, "Ground station longitude input not found"
+        assert 'min=' in match.group(0), \
+            "Ground station longitude should have min attribute"
+        assert 'max=' in match.group(0), \
+            "Ground station longitude should have max attribute"
+
+    # --- Promise.all error handling ---
+
+    def test_load_existing_layers_has_catch(self):
+        """loadExistingLayers Promise.all should have .catch() handler."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        import re
+        # Find the loadExistingLayers section and verify Promise.all has .catch()
+        match = re.search(
+            r'function loadExistingLayers.*?Promise\.all\(promises\)\.then\(.*?\)(\.[a-z]+\()',
+            html, re.DOTALL,
+        )
+        assert match is not None, "Promise.all in loadExistingLayers not found"
+        assert match.group(1) == ".catch(", \
+            f"Promise.all should chain .catch(), got: {match.group(1)}"
+
+    # --- Layer renaming ---
+
+    def test_layer_rename_function_exists(self):
+        """renameLayer or inline rename mechanism should exist."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "renameLayer" in html or "dblclick" in html or "contenteditable" in html, \
+            "Layer rename mechanism not found (renameLayer function or dblclick handler)"
+
+    # --- Timeline sync ---
+
+    def test_apply_settings_syncs_timeline(self):
+        """applySettings should update Cesium viewer.clock bounds."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        import re
+        match = re.search(r'function applySettings\(\)\s*\{(.*?)\n\s*\}', html, re.DOTALL)
+        assert match is not None, "applySettings function not found"
+        fn_body = match.group(1)
+        assert "viewer.clock" in fn_body or "clock.startTime" in fn_body, \
+            "applySettings should sync Cesium viewer.clock timeline"
+
+    # --- Cap toast warning ---
+
+    def test_cap_toast_shown_on_capped_layer(self):
+        """rebuildPanel should show toast when a layer has capped_from."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        # rebuildPanel should call showToast when capped_from is detected
+        import re
+        match = re.search(r'function rebuildPanel\(\)\s*\{(.*)', html, re.DOTALL)
+        assert match is not None, "rebuildPanel function not found"
+        # Find the content up to the next top-level function
+        fn_body = match.group(1)
+        # Check that capped_from triggers a toast
+        assert "capped_from" in fn_body  # already passes
+        # But we need toast notification when capped
+        assert "showToast" in fn_body and "capped" in fn_body.lower(), \
+            "rebuildPanel should show toast when layers are capped"
+
+    # --- Cancel button / AbortController ---
+
+    def test_abort_controller_present(self):
+        """Loading overlay should have cancel/abort mechanism."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "AbortController" in html or "cancelRequest" in html or \
+            "cancel" in html.lower().split("loadingindicator")[0] == False, \
+            "AbortController or cancel mechanism not found"
+        # More specific: loading indicator should have a cancel button
+        assert "cancelRequest" in html or \
+            ('id="cancelBtn"' in html) or \
+            ("AbortController" in html), \
+            "Cancel button or AbortController not found in loading overlay"
+
+    # --- Layer opacity ---
+
+    def test_layer_opacity_control(self):
+        """Layer panel should have opacity slider/input for layers."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "setOpacity" in html or "opacitySlider" in html or \
+            'type="range"' in html, \
+            "Opacity slider/control not found in layer panel"
+
+    # --- Keyboard shortcuts ---
+
+    def test_keyboard_shortcuts_handler(self):
+        """Keyboard shortcut handler should be registered."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "keydown" in html or "onkeydown" in html, \
+            "Keyboard shortcut handler not found"
+
+    # --- Responsive panel ---
+
+    def test_responsive_media_query(self):
+        """Panel should have CSS media query for small screens."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "@media" in html, \
+            "No CSS media query found for responsive panel"
+
+
+class TestInteractiveViewerBugFixes:
+    """Bug fixes for interactive viewer JavaScript."""
+
+    def _html(self):
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        return generate_interactive_html()
+
+    # BUG-006: Session load must clear old data sources
+    def test_load_session_clears_old_sources(self):
+        """loadSession should clear layerSources before loading new layers."""
+        html = self._html()
+        # Either clearAllSources is a separate function called by loadSession,
+        # or loadSession directly iterates and removes
+        assert "clearAllSources" in html or \
+            ("loadSession" in html and "dataSources.remove" in html), \
+            "loadSession must clear old data sources before loading"
+        # Verify clearAllSources function removes tracked sources
+        if "clearAllSources" in html:
+            import re
+            match = re.search(r'function clearAllSources\(\)\s*\{(.*?)\n\s*\}', html, re.DOTALL)
+            assert match is not None
+            fn_body = match.group(1)
+            assert "dataSources.remove" in fn_body
+
+    # BUG-008: Toast spam prevention
+    def test_cap_toast_deduplication(self):
+        """Cap toast should only show once per layer, not on every rebuild."""
+        html = self._html()
+        # Must track shown cap toasts in a Set or similar
+        assert "cappedToastShown" in html or "shownCapToasts" in html or \
+            "capToastIds" in html, \
+            "Missing deduplication tracking for cap toasts"
+
+    # BUG-009: Opacity slider remembers value
+    def test_opacity_slider_preserves_value(self):
+        """Opacity slider should use stored value, not always 100."""
+        html = self._html()
+        assert "layerOpacities" in html or "opacityState" in html, \
+            "Missing opacity state tracking across rebuilds"
+
+    # BUG-013: AbortController signal wired to fetch
+    def test_abort_controller_wired_to_fetch(self):
+        """fetch() calls should pass AbortController signal."""
+        html = self._html()
+        # The signal can be wired via a shared helper function (_fetchOpts)
+        # or directly in each API function. Check that signal is present
+        # in the fetch options infrastructure.
+        assert "signal" in html and "currentAbortController" in html, \
+            "AbortController signal must be wired to fetch calls"
+        # Verify _fetchOpts or direct signal passing exists
+        assert "_fetchOpts" in html or "signal: currentAbortController" in html, \
+            "Signal must be passed to fetch via _fetchOpts helper or directly"
+
+    # BUG-013: Non-JSON error handling
+    def test_fetch_handles_non_json_errors(self):
+        """API helpers should handle non-JSON error responses."""
+        html = self._html()
+        # Should have a catch for json parse failures
+        assert "statusText" in html, \
+            "API helpers should fall back to statusText for non-JSON errors"
+
+    # BUG-019: Loading counter
+    def test_loading_uses_counter(self):
+        """Loading indicator should use counter, not boolean."""
+        html = self._html()
+        assert "loadingCount" in html or "loadCount" in html, \
+            "Loading indicator should use a counter, not boolean show/hide"
+
+    # BUG-020: toggleVisible has catch handler
+    def test_toggle_visible_has_catch(self):
+        """toggleVisible should have .catch() error handler."""
+        html = self._html()
+        import re
+        # Capture entire toggleVisible function including chained methods
+        match = re.search(
+            r'function toggleVisible\(.*?\)\s*\{(.*?\.catch\(.*?\))',
+            html, re.DOTALL,
+        )
+        assert match is not None, \
+            "toggleVisible must have .catch() handler"
+
+    # BUG-021: Toast timeout cleared on dismiss
+    def test_toast_timeout_cleared_on_dismiss(self):
+        """Toast manual dismiss should clearTimeout."""
+        html = self._html()
+        assert "clearTimeout" in html, \
+            "showToast must clearTimeout on manual dismiss"
+
+    # BUG-024: Blob URL revoked after save
+    def test_save_session_revokes_blob_url(self):
+        """saveSession should revoke blob URL after download."""
+        html = self._html()
+        assert "revokeObjectURL" in html, \
+            "saveSession must revoke blob URL to prevent leak"
+
+    # BUG-029: Show All/Hide All uses Promise.all
+    def test_show_all_uses_promise_all(self):
+        """Show All/Hide All should use Promise.all, not setTimeout."""
+        html = self._html()
+        import re
+        # Find the Show All handler in rebuildPanel
+        match = re.search(r'showBtn\.onclick.*?function\(\)\s*\{(.*?)\};', html, re.DOTALL)
+        if match:
+            fn_body = match.group(1)
+            assert "Promise.all" in fn_body or "promises" in fn_body, \
+                "Show All should use Promise.all instead of setTimeout"
+
+    # BUG-030: dataSources.remove with destroy=true
+    def test_remove_data_source_with_destroy(self):
+        """dataSources.remove should pass true for destroy parameter."""
+        html = self._html()
+        import re
+        # Find loadLayerCzml function
+        match = re.search(r'function loadLayerCzml\(.*?\)\s*\{(.*?)\n\s*\}', html, re.DOTALL)
+        assert match is not None
+        fn_body = match.group(1)
+        # Check that remove calls include true for destroy
+        assert "remove(layerSources[layerId], true)" in fn_body or \
+            "remove(layerSources[layerId],true)" in fn_body, \
+            "dataSources.remove should pass true for destroy"
+
+
 class TestCesiumViewerPurity:
     """Adapter purity: only stdlib + internal imports allowed."""
 

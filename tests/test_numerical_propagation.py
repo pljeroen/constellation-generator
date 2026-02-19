@@ -214,6 +214,45 @@ class TestJ3Perturbation:
         mag = math.sqrt(sum(a ** 2 for a in acc))
         assert mag > 0
 
+    def test_j3_sign_matches_potential_gradient(self, epoch):
+        """J3 acceleration must match the numerical gradient of the J3 geopotential.
+
+        U_J3 = (mu * J3 * Re^3 / 2) * (5*z^3/r^7 - 3*z/r^5)
+        acceleration = grad(U_J3) computed via finite differences.
+        Verifies MATH-008 fix: sign inversion in all three components.
+        """
+        import numpy as np
+
+        mu = OrbitalConstants.MU_EARTH
+        j3_val = OrbitalConstants.J3_EARTH
+        re = OrbitalConstants.R_EARTH_EQUATORIAL
+
+        def j3_potential(x, y, z):
+            r = math.sqrt(x*x + y*y + z*z)
+            return (mu * j3_val * re**3 / 2.0) * (5.0*z**3 / r**7 - 3.0*z / r**5)
+
+        r = OrbitalConstants.R_EARTH + 500_000
+        pos = (r * 0.7, r * 0.3, r * 0.6)
+        vel = (0.0, 7500.0, 0.0)
+
+        # Numerical gradient via central differences
+        h = 1.0  # 1 meter step
+        grad_num = []
+        for i in range(3):
+            p_plus = list(pos)
+            p_minus = list(pos)
+            p_plus[i] += h
+            p_minus[i] -= h
+            dU = j3_potential(*p_plus) - j3_potential(*p_minus)
+            grad_num.append(dU / (2.0 * h))
+
+        j3 = J3Perturbation()
+        acc = j3.acceleration(epoch, pos, vel)
+
+        for i in range(3):
+            assert abs(acc[i] - grad_num[i]) / abs(grad_num[i]) < 1e-6, \
+                f"J3 component {i}: code={acc[i]:.6e}, expected={grad_num[i]:.6e}"
+
 
 class TestAtmosphericDragForce:
 

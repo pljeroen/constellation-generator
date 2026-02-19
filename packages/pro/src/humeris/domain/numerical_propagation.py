@@ -151,9 +151,12 @@ class J3Perturbation:
 
         z3_r2 = z * z * z / r2
 
-        ax = coeff * (x / r7) * (35.0 * z3_r2 - 15.0 * z)
-        ay = coeff * (y / r7) * (35.0 * z3_r2 - 15.0 * z)
-        az = -coeff * (1.0 / r7) * (30.0 * z * z - 35.0 * z * z * z * z / r2 - 3.0 * r2)
+        # Gradient of U_J3 = coeff*(5z³/r⁷ - 3z/r⁵):
+        #   dU/dx = coeff * (x/r⁷) * (-35z³/r² + 15z)
+        #   dU/dz = coeff * (1/r⁷) * (30z² - 35z⁴/r² - 3r²)
+        ax = coeff * (x / r7) * (-35.0 * z3_r2 + 15.0 * z)
+        ay = coeff * (y / r7) * (-35.0 * z3_r2 + 15.0 * z)
+        az = coeff * (1.0 / r7) * (30.0 * z * z - 35.0 * z * z * z * z / r2 - 3.0 * r2)
         return (float(ax), float(ay), float(az))
 
 

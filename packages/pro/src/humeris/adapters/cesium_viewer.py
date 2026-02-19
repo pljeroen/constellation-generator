@@ -461,12 +461,29 @@ def generate_interactive_html(
             padding: 0 12px 2px; font-style: italic;
         }}
         .session-buttons {{ display: flex; gap: 4px; padding: 4px 12px; }}
+        .opacity-slider {{
+            width: 50px; height: 4px; cursor: pointer;
+            accent-color: rgba(80,160,255,0.7);
+        }}
+        .rename-input {{
+            background: rgba(255,255,255,0.15); border: 1px solid rgba(80,160,255,0.5);
+            color: #fff; font-size: 11px; padding: 1px 4px; border-radius: 2px;
+            width: 100%; outline: none;
+        }}
+        @media (max-width: 1024px) {{
+            #sidePanel {{ width: 220px; font-size: 11px; }}
+            #sidePanel.collapsed {{ display: none; }}
+        }}
+        @media (max-width: 768px) {{
+            #sidePanel {{ display: none; }}
+            #panelToggle {{ display: block; }}
+        }}
     </style>
 </head>
 <body>
     <div id="cesiumContainer"></div>
     <div id="infoOverlay">{safe_title}</div>
-    <div id="loadingIndicator"><span class="spinner"></span><span id="loadingText">Loading...</span></div>
+    <div id="loadingIndicator"><span class="spinner"></span><span id="loadingText">Loading...</span><button id="cancelBtn" class="btn btn-sm btn-danger" style="margin-left:12px" onclick="cancelRequest()">Cancel</button></div>
     <div id="toastContainer"></div>
     <button id="panelToggle" onclick="togglePanel()" title="Toggle panel">&#9776;</button>
     <div id="colorLegend"></div>
@@ -479,12 +496,12 @@ def generate_interactive_html(
                 <details>
                     <summary>Walker Constellation</summary>
                     <div class="panel-section">
-                        <div class="form-row"><label>Altitude (km)</label><input type="number" id="w-alt" value="550" step="10"></div>
-                        <div class="form-row"><label>Inclination</label><input type="number" id="w-inc" value="53" step="1"></div>
-                        <div class="form-row"><label>Planes</label><input type="number" id="w-planes" value="6" min="1"></div>
-                        <div class="form-row"><label>Sats/plane</label><input type="number" id="w-spp" value="10" min="1"></div>
+                        <div class="form-row"><label>Altitude (km)</label><input type="number" id="w-alt" value="550" min="100" max="100000" step="10"></div>
+                        <div class="form-row"><label>Inclination</label><input type="number" id="w-inc" value="53" min="0" max="180" step="1"></div>
+                        <div class="form-row"><label>Planes</label><input type="number" id="w-planes" value="6" min="1" max="100"></div>
+                        <div class="form-row"><label>Sats/plane</label><input type="number" id="w-spp" value="10" min="1" max="100"></div>
                         <div class="form-row"><label>Phase factor</label><input type="number" id="w-pf" value="1" min="0"></div>
-                        <div class="form-row"><label>RAAN offset</label><input type="number" id="w-raan" value="0" step="0.1"></div>
+                        <div class="form-row"><label>RAAN offset</label><input type="number" id="w-raan" value="0" min="0" max="360" step="0.1"></div>
                         <div class="form-row"><label>Name</label><input type="text" id="w-name" value="Walker"></div>
                         <button class="btn" onclick="addWalker()">Add Walker</button>
                     </div>
@@ -528,8 +545,8 @@ def generate_interactive_html(
                     <summary>Ground Station</summary>
                     <div class="panel-section">
                         <div class="form-row"><label>Name</label><input type="text" id="gs-name" value="Station"></div>
-                        <div class="form-row"><label>Latitude</label><input type="number" id="gs-lat" value="0" step="0.01"></div>
-                        <div class="form-row"><label>Longitude</label><input type="number" id="gs-lon" value="0" step="0.01"></div>
+                        <div class="form-row"><label>Latitude</label><input type="number" id="gs-lat" value="0" min="-90" max="90" step="0.01"></div>
+                        <div class="form-row"><label>Longitude</label><input type="number" id="gs-lon" value="0" min="-180" max="180" step="0.01"></div>
                         <div class="preset-row">
                             <button class="preset-btn" onclick="gsPreset('Svalbard',78.23,15.39)">Svalbard</button>
                             <button class="preset-btn" onclick="gsPreset('Kiruna',67.86,20.96)">Kiruna</button>
@@ -666,14 +683,33 @@ def generate_interactive_html(
 
         // Layer tracking: layerId -> CzmlDataSource
         var layerSources = {{}};
+        var layerOpacities = {{}};  // layerId -> opacity (0-100)
+        var capToastIds = new Set();  // Track which layers showed cap toast
 
+        var currentAbortController = null;
+        var loadingCount = 0;
         function showLoading(msg) {{
+            currentAbortController = new AbortController();
+            loadingCount++;
             var el = document.getElementById("loadingIndicator");
             document.getElementById("loadingText").textContent = msg || "Loading...";
             el.style.display = "flex";
         }}
         function hideLoading() {{
+            loadingCount = Math.max(0, loadingCount - 1);
+            if (loadingCount === 0) {{
+                currentAbortController = null;
+                document.getElementById("loadingIndicator").style.display = "none";
+            }}
+        }}
+        function cancelRequest() {{
+            if (currentAbortController) {{
+                currentAbortController.abort();
+                currentAbortController = null;
+            }}
+            loadingCount = 0;
             document.getElementById("loadingIndicator").style.display = "none";
+            showToast("Request cancelled", "info");
         }}
         function showToast(msg, type) {{
             type = type || "info";
@@ -681,10 +717,10 @@ def generate_interactive_html(
             var toast = document.createElement("div");
             toast.className = "toast toast-" + type;
             toast.textContent = msg;
-            toast.onclick = function() {{ toast.remove(); }};
-            container.appendChild(toast);
             var delay = type === "error" ? 8000 : type === "success" ? 3000 : 5000;
-            setTimeout(function() {{ toast.remove(); }}, delay);
+            var tid = setTimeout(function() {{ toast.remove(); }}, delay);
+            toast.onclick = function() {{ clearTimeout(tid); toast.remove(); }};
+            container.appendChild(toast);
         }}
         function togglePanel() {{
             var panel = document.getElementById("sidePanel");
@@ -698,46 +734,92 @@ def generate_interactive_html(
             }}
         }}
 
-        // --- API helpers ---
-        function apiGet(path) {{
-            return fetch(API + path).then(function(r) {{
-                if (!r.ok) return r.json().then(function(e) {{ throw new Error(e.error || r.statusText); }});
-                return r.json();
+        // --- Layer rename ---
+        function renameLayer(layerId, newName) {{
+            if (!newName || !newName.trim()) return;
+            apiPut("/api/layer/" + layerId, {{name: newName.trim()}}).then(function() {{
+                rebuildPanel();
+            }}).catch(function(e) {{
+                showToast("Rename error: " + e.message, "error");
             }});
+        }}
+
+        // --- Layer opacity ---
+        function setOpacity(layerId, value) {{
+            var alpha = value / 100;
+            if (layerSources[layerId]) {{
+                var entities = layerSources[layerId].entities.values;
+                for (var i = 0; i < entities.length; i++) {{
+                    var e = entities[i];
+                    if (e.point) {{
+                        var c = e.point.color.getValue(viewer.clock.currentTime);
+                        if (c) e.point.color = new Cesium.Color(c.red, c.green, c.blue, alpha);
+                    }}
+                }}
+                viewer.scene.requestRender();
+            }}
+        }}
+
+        // --- Keyboard shortcuts ---
+        document.addEventListener("keydown", function(e) {{
+            // Alt+P: toggle panel
+            if (e.altKey && e.key === "p") {{ togglePanel(); e.preventDefault(); }}
+            // Space: play/pause (only when not in input)
+            if (e.key === " " && e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT") {{
+                viewer.clock.shouldAnimate = !viewer.clock.shouldAnimate;
+                e.preventDefault();
+            }}
+            // Delete: remove focused layer (if any)
+            if (e.key === "Delete" && e.target.dataset && e.target.dataset.layerId) {{
+                removeLayer(e.target.dataset.layerId);
+                e.preventDefault();
+            }}
+        }});
+
+        // --- API helpers ---
+        function _handleResponse(r) {{
+            if (!r.ok) {{
+                return r.json().catch(function() {{
+                    throw new Error(r.statusText || "Request failed");
+                }}).then(function(e) {{ throw new Error(e.error || r.statusText); }});
+            }}
+            return r.json();
+        }}
+        function _fetchOpts() {{
+            var opts = {{}};
+            if (currentAbortController) opts.signal = currentAbortController.signal;
+            return opts;
+        }}
+        function apiGet(path) {{
+            var opts = _fetchOpts();
+            return fetch(API + path, opts).then(_handleResponse);
         }}
         function apiPost(path, body) {{
-            return fetch(API + path, {{
-                method: "POST",
-                headers: {{"Content-Type": "application/json"}},
-                body: JSON.stringify(body),
-            }}).then(function(r) {{
-                if (!r.ok) return r.json().then(function(e) {{ throw new Error(e.error || r.statusText); }});
-                return r.json();
-            }});
+            var opts = _fetchOpts();
+            opts.method = "POST";
+            opts.headers = {{"Content-Type": "application/json"}};
+            opts.body = JSON.stringify(body);
+            return fetch(API + path, opts).then(_handleResponse);
         }}
         function apiPut(path, body) {{
-            return fetch(API + path, {{
-                method: "PUT",
-                headers: {{"Content-Type": "application/json"}},
-                body: JSON.stringify(body),
-            }}).then(function(r) {{
-                if (!r.ok) return r.json().then(function(e) {{ throw new Error(e.error || r.statusText); }});
-                return r.json();
-            }});
+            var opts = _fetchOpts();
+            opts.method = "PUT";
+            opts.headers = {{"Content-Type": "application/json"}};
+            opts.body = JSON.stringify(body);
+            return fetch(API + path, opts).then(_handleResponse);
         }}
         function apiDelete(path) {{
-            return fetch(API + path, {{method: "DELETE"}}).then(function(r) {{
-                if (!r.ok) return r.json().then(function(e) {{ throw new Error(e.error || r.statusText); }});
-                return r.json();
-            }});
+            var opts = _fetchOpts();
+            opts.method = "DELETE";
+            return fetch(API + path, opts).then(_handleResponse);
         }}
 
         // --- Load CZML for a layer ---
         function loadLayerCzml(layerId) {{
             return apiGet("/api/czml/" + layerId).then(function(czml) {{
-                // Remove old data source if exists
+                // Remove old data source if exists (destroy=true to free memory)
                 if (layerSources[layerId]) {{
-                    viewer.dataSources.remove(layerSources[layerId]);
+                    viewer.dataSources.remove(layerSources[layerId], true);
                 }}
                 var ds = new Cesium.CzmlDataSource();
                 return ds.load(czml).then(function() {{
@@ -827,6 +909,9 @@ def generate_interactive_html(
                 lon_step_deg: parseFloat(document.getElementById("param-lon-step").value),
                 min_elevation_deg: parseFloat(document.getElementById("param-min-elev").value),
                 max_range_km: parseFloat(document.getElementById("param-max-range").value),
+                cd: parseFloat(document.getElementById("param-cd").value),
+                area_m2: parseFloat(document.getElementById("param-area").value),
+                mass_kg: parseFloat(document.getElementById("param-mass").value),
             }};
         }}
 
@@ -855,7 +940,7 @@ def generate_interactive_html(
         function removeLayer(layerId) {{
             apiDelete("/api/layer/" + layerId).then(function() {{
                 if (layerSources[layerId]) {{
-                    viewer.dataSources.remove(layerSources[layerId]);
+                    viewer.dataSources.remove(layerSources[layerId], true);
                     delete layerSources[layerId];
                     viewer.scene.requestRender();
                 }}
@@ -867,11 +952,14 @@ def generate_interactive_html(
 
         // --- Toggle Visibility ---
         function toggleVisible(layerId, visible) {{
-            apiPut("/api/layer/" + layerId, {{visible: visible}}).then(function() {{
+            return apiPut("/api/layer/" + layerId, {{visible: visible}}).then(function() {{
                 if (layerSources[layerId]) {{
                     layerSources[layerId].show = visible;
                     viewer.scene.requestRender();
                 }}
+            }}).catch(function(e) {{
+                showToast("Visibility error: " + e.message, "error");
+                rebuildPanel();
             }});
         }}
 
@@ -919,10 +1007,20 @@ def generate_interactive_html(
                 a.href = URL.createObjectURL(blob);
                 a.download = "humeris-session.json";
                 a.click();
+                setTimeout(function() {{ URL.revokeObjectURL(a.href); }}, 1000);
                 showToast("Session saved", "success");
             }}).catch(function(e) {{
                 showToast("Save error: " + e.message, "error");
             }});
+        }}
+        function clearAllSources() {{
+            // Remove all tracked data sources from the viewer
+            Object.keys(layerSources).forEach(function(lid) {{
+                if (layerSources[lid]) {{
+                    viewer.dataSources.remove(layerSources[lid], true);
+                }}
+            }});
+            layerSources = {{}};
         }}
         function loadSession() {{
             var input = document.createElement("input");
@@ -935,11 +1033,18 @@ def generate_interactive_html(
                 reader.onload = function(e) {{
                     try {{
                         var session = JSON.parse(e.target.result);
+                        // Clear old data sources before loading new session
+                        clearAllSources();
+                        capToastIds = new Set();
                         apiPost("/api/session/load", {{session: session}}).then(function() {{
                             // Reload all layers
                             apiGet("/api/state").then(function(state) {{
-                                state.layers.forEach(function(l) {{ loadLayerCzml(l.layer_id); }});
-                                setTimeout(rebuildPanel, 500);
+                                var promises = state.layers.map(function(l) {{
+                                    return loadLayerCzml(l.layer_id);
+                                }});
+                                Promise.all(promises).then(function() {{
+                                    rebuildPanel();
+                                }});
                             }});
                             showToast("Session loaded", "success");
                         }}).catch(function(err) {{
@@ -959,6 +1064,11 @@ def generate_interactive_html(
             var dur = parseFloat(document.getElementById("sim-duration").value) * 3600;
             var step = parseFloat(document.getElementById("sim-step").value);
             apiPut("/api/settings", {{duration_s: dur, step_s: step}}).then(function() {{
+                // Sync Cesium viewer.clock timeline bounds
+                var start = viewer.clock.startTime;
+                var stop = Cesium.JulianDate.addSeconds(start, dur, new Cesium.JulianDate());
+                viewer.clock.stopTime = stop;
+                viewer.timeline.zoomTo(start, stop);
                 showToast("Settings applied", "success");
             }}).catch(function(e) {{
                 showToast("Settings error: " + e.message, "error");
@@ -1018,8 +1128,8 @@ def generate_interactive_html(
                     showBtn.style.cssText = "font-size:9px;padding:1px 4px;cursor:pointer;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:2px;";
                     showBtn.onclick = (function(items) {{
                         return function() {{
-                            items.forEach(function(l) {{ toggleVisible(l.layer_id, true); }});
-                            setTimeout(rebuildPanel, 200);
+                            var promises = items.map(function(l) {{ return toggleVisible(l.layer_id, true); }});
+                            Promise.all(promises).then(rebuildPanel);
                         }};
                     }})(cats[cat]);
                     var hideBtn = document.createElement("button");
@@ -1028,8 +1138,8 @@ def generate_interactive_html(
                     hideBtn.style.cssText = showBtn.style.cssText;
                     hideBtn.onclick = (function(items) {{
                         return function() {{
-                            items.forEach(function(l) {{ toggleVisible(l.layer_id, false); }});
-                            setTimeout(rebuildPanel, 200);
+                            var promises = items.map(function(l) {{ return toggleVisible(l.layer_id, false); }});
+                            Promise.all(promises).then(rebuildPanel);
                         }};
                     }})(cats[cat]);
                     btns.appendChild(showBtn);
@@ -1052,6 +1162,32 @@ def generate_interactive_html(
                         nameSpan.className = "layer-name";
                         var displayName = layer.name.split(":").pop();
                         nameSpan.textContent = displayName;
+                        nameSpan.title = "Double-click to rename";
+                        nameSpan.ondblclick = (function(lid, span) {{
+                            return function() {{
+                                var inp = document.createElement("input");
+                                inp.className = "rename-input";
+                                inp.value = span.textContent;
+                                inp._cancelled = false;
+                                inp.onblur = function() {{
+                                    if (!inp._cancelled && inp.parentNode) {{
+                                        renameLayer(lid, inp.value);
+                                    }}
+                                }};
+                                inp.onkeydown = function(ev) {{
+                                    if (ev.key === "Enter") inp.blur();
+                                    if (ev.key === "Escape") {{
+                                        inp._cancelled = true;
+                                        span.style.display = "";
+                                        inp.remove();
+                                    }}
+                                }};
+                                span.style.display = "none";
+                                span.parentNode.insertBefore(inp, span.nextSibling);
+                                inp.focus();
+                                inp.select();
+                            }};
+                        }})(layer.layer_id, nameSpan);
                         item.appendChild(nameSpan);
 
                         var countSpan = document.createElement("span");
@@ -1062,6 +1198,23 @@ def generate_interactive_html(
                         }}
                         countSpan.textContent = countText;
                         item.appendChild(countSpan);
+
+                        // Opacity slider (BUG-009: preserve value across rebuilds)
+                        var opSlider = document.createElement("input");
+                        opSlider.type = "range";
+                        opSlider.className = "opacity-slider";
+                        opSlider.min = "0";
+                        opSlider.max = "100";
+                        opSlider.value = layerOpacities[layer.layer_id] != null ? layerOpacities[layer.layer_id] : 100;
+                        opSlider.title = "Opacity";
+                        opSlider.oninput = (function(lid) {{
+                            return function() {{
+                                var v = parseInt(this.value);
+                                layerOpacities[lid] = v;
+                                setOpacity(lid, v);
+                            }};
+                        }})(layer.layer_id);
+                        item.appendChild(opSlider);
 
                         // Export button
                         var expBtn = document.createElement("button");
@@ -1100,6 +1253,10 @@ def generate_interactive_html(
                             var statsText = layer.layer_type + " | " + layer.num_entities + " entities";
                             if (layer.capped_from) {{
                                 statsText += " (capped from " + layer.capped_from + ")";
+                                if (!capToastIds.has(layer.layer_id)) {{
+                                    capToastIds.add(layer.layer_id);
+                                    showToast("Layer capped: showing " + layer.num_entities + " of " + layer.capped_from + " satellites", "info");
+                                }}
                             }}
                             statsDiv.textContent = statsText;
                             catDiv.appendChild(statsDiv);
@@ -1132,6 +1289,9 @@ def generate_interactive_html(
                     viewer.camera.setView({{
                         destination: Cesium.Cartesian3.fromDegrees(10, 20, 15000000),
                     }});
+                }}).catch(function(e) {{
+                    showToast("Error loading layers: " + e.message, "error");
+                    rebuildPanel();
                 }});
             }});
         }}

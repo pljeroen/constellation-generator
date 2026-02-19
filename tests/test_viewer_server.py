@@ -1090,6 +1090,64 @@ class TestSessionSaveLoad:
         assert len(state["layers"]) >= 1
 
 
+class TestSessionLoadClears:
+    """BUG-007: Session load must clear existing layers before loading."""
+
+    def test_load_session_replaces_existing_layers(self, running_server):
+        """Loading a session should clear old layers, not append."""
+        port, mgr = running_server
+        # Add two constellations
+        _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 2, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "Existing-1",
+            },
+        })
+        _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 800, "inclination_deg": 97,
+                "num_planes": 2, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "Existing-2",
+            },
+        })
+        _, state = _api_request(port, "GET", "/api/state")
+        assert len(state["layers"]) == 2
+
+        # Load a session with just one layer
+        session_data = {
+            "epoch": EPOCH.isoformat(),
+            "duration_s": 7200,
+            "step_s": 60,
+            "layers": [{
+                "name": "Constellation:New",
+                "category": "Constellation",
+                "layer_type": "walker",
+                "mode": "animated",
+                "visible": True,
+                "params": {
+                    "altitude_km": 600, "inclination_deg": 45,
+                    "num_planes": 2, "sats_per_plane": 2,
+                    "phase_factor": 1, "raan_offset_deg": 0,
+                    "shell_name": "New",
+                },
+            }],
+        }
+        status, body = _api_request(port, "POST", "/api/session/load", {
+            "session": session_data,
+        })
+        assert status == 200
+
+        # Should have exactly 1 layer, not 3
+        _, state = _api_request(port, "GET", "/api/state")
+        assert len(state["layers"]) == 1, \
+            f"Expected 1 layer after load, got {len(state['layers'])}"
+
+
 class TestAnalysisRecompute:
     """Verify analysis recomputation with updated params."""
 
@@ -1155,6 +1213,805 @@ class TestDurationStepSettings:
         assert state["step_s"] == 120
 
 
+class TestInputValidation:
+    """BUG-004/005/012/016/027: Server-side input validation."""
+
+    # BUG-004: Content-Length validation
+    def test_non_numeric_content_length_returns_400(self, running_server):
+        """Non-numeric Content-Length should return 400, not crash."""
+        port, _ = running_server
+        import http.client
+        conn = http.client.HTTPConnection("localhost", port, timeout=5)
+        conn.putrequest("POST", "/api/constellation")
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Content-Length", "notanumber")
+        conn.endheaders(b'{}')
+        resp = conn.getresponse()
+        assert resp.status == 400
+
+    # BUG-005: URL param sanitization
+    def test_path_traversal_in_layer_id_rejected(self, running_server):
+        """Layer ID with path traversal should be rejected."""
+        port, _ = running_server
+        status, body = _api_request(port, "GET", "/api/czml/../../etc/passwd")
+        assert status in (400, 404)
+
+    def test_newline_in_layer_id_rejected(self, running_server):
+        """Layer ID with newlines should be rejected."""
+        port, _ = running_server
+        import http.client
+        conn = http.client.HTTPConnection("localhost", port, timeout=5)
+        conn.request("GET", "/api/czml/layer-1%0d%0aInjected:header")
+        resp = conn.getresponse()
+        assert resp.status in (400, 404)
+
+    # BUG-012: Walker params validation
+    def test_walker_negative_altitude_rejected(self, running_server):
+        """Negative altitude should be rejected."""
+        port, _ = running_server
+        status, body = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": -100,
+                "inclination_deg": 53,
+                "num_planes": 2,
+                "sats_per_plane": 2,
+            },
+        })
+        assert status == 400
+
+    def test_walker_excessive_sat_count_rejected(self, running_server):
+        """Excessively large satellite count should be rejected."""
+        port, _ = running_server
+        status, body = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550,
+                "inclination_deg": 53,
+                "num_planes": 200,
+                "sats_per_plane": 200,
+            },
+        })
+        assert status == 400
+
+    def test_walker_zero_planes_rejected(self, running_server):
+        """Zero planes should be rejected."""
+        port, _ = running_server
+        status, body = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550,
+                "inclination_deg": 53,
+                "num_planes": 0,
+                "sats_per_plane": 2,
+            },
+        })
+        assert status == 400
+
+    # BUG-016: Settings validation
+    def test_settings_zero_duration_rejected(self, running_server):
+        """Zero duration should be rejected."""
+        port, _ = running_server
+        status, body = _api_request(port, "PUT", "/api/settings", {
+            "duration_s": 0,
+            "step_s": 60,
+        })
+        assert status == 400
+
+    def test_settings_negative_step_rejected(self, running_server):
+        """Negative step should be rejected."""
+        port, _ = running_server
+        status, body = _api_request(port, "PUT", "/api/settings", {
+            "duration_s": 7200,
+            "step_s": -10,
+        })
+        assert status == 400
+
+    # BUG-027: Ground station lat/lon validation
+    def test_ground_station_invalid_latitude_rejected(self, running_server):
+        """Latitude outside [-90, 90] should be rejected."""
+        port, _ = running_server
+        status, body = _api_request(port, "POST", "/api/ground-station", {
+            "name": "Bad",
+            "lat": 91.0,
+            "lon": 0.0,
+        })
+        assert status == 400
+
+    def test_ground_station_invalid_longitude_rejected(self, running_server):
+        """Longitude outside [-180, 180] should be rejected."""
+        port, _ = running_server
+        status, body = _api_request(port, "POST", "/api/ground-station", {
+            "name": "Bad",
+            "lat": 0.0,
+            "lon": 181.0,
+        })
+        assert status == 400
+
+
+class TestSessionRestoreBugs:
+    """Bug fixes for session restore: CelesTrak and analysis layers."""
+
+    def test_session_restore_celestrak_layers(self, running_server):
+        """Session load should restore celestrak layers, not just walker."""
+        port, mgr = running_server
+        # Create a session with a celestrak-type layer in it
+        session_data = {
+            "epoch": EPOCH.isoformat(),
+            "duration_s": 7200,
+            "step_s": 60,
+            "layers": [
+                {
+                    "name": "Constellation:Walker",
+                    "category": "Constellation",
+                    "layer_type": "walker",
+                    "mode": "animated",
+                    "visible": True,
+                    "params": {
+                        "altitude_km": 550,
+                        "inclination_deg": 53,
+                        "num_planes": 2,
+                        "sats_per_plane": 2,
+                        "phase_factor": 1,
+                        "raan_offset_deg": 0,
+                        "shell_name": "Test",
+                    },
+                },
+            ],
+        }
+        # Load session
+        status, body = _api_request(port, "POST", "/api/session/load", {
+            "session": session_data,
+        })
+        assert status == 200
+        assert body["restored"] >= 1, "Should restore the walker layer"
+
+        # Now test celestrak restore: use the internal handler directly.
+        # The bug: `if lt in ("walker", "celestrak") and lt == "walker":` never
+        # matches celestrak. After fix, celestrak layers with walker-compatible
+        # params should restore. We simulate by creating a session with a
+        # celestrak layer that has walker params (since we can't fetch CelesTrak
+        # in tests, we use a walker shell as the underlying params).
+        celestrak_session = {
+            "epoch": EPOCH.isoformat(),
+            "duration_s": 7200,
+            "step_s": 60,
+            "layers": [
+                {
+                    "name": "Constellation:GPS-OPS",
+                    "category": "Constellation",
+                    "layer_type": "celestrak",
+                    "mode": "animated",
+                    "visible": True,
+                    "params": {
+                        "group": "GPS-OPS",
+                        "altitude_km": 20200,
+                        "inclination_deg": 55,
+                        "num_planes": 6,
+                        "sats_per_plane": 4,
+                        "phase_factor": 1,
+                        "raan_offset_deg": 0,
+                        "shell_name": "GPS",
+                    },
+                },
+            ],
+        }
+        # Clear existing layers
+        _, state = _api_request(port, "GET", "/api/state")
+        for layer in state["layers"]:
+            _api_request(port, "DELETE", f"/api/layer/{layer['layer_id']}")
+
+        # Load celestrak session
+        status, body = _api_request(port, "POST", "/api/session/load", {
+            "session": celestrak_session,
+        })
+        assert status == 200
+        assert body["restored"] >= 1, \
+            "CelesTrak layer should be restored (bug: condition never matches celestrak)"
+
+    def test_session_restore_analysis_layers(self, running_server):
+        """Session load should restore analysis layers, not just constellations."""
+        port, mgr = running_server
+        # Add a constellation first
+        status, body = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 2, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "AnalysisSrc",
+            },
+        })
+        source_id = body["layer_id"]
+
+        # Add an analysis layer
+        status, body = _api_request(port, "POST", "/api/analysis", {
+            "type": "eclipse",
+            "source_layer": source_id,
+            "params": {},
+        })
+        assert status == 201
+
+        # Save session
+        _, save_resp = _api_request(port, "POST", "/api/session/save")
+        session_data = save_resp["session"]
+
+        # Verify analysis layer is in saved data
+        analysis_layers = [l for l in session_data["layers"]
+                          if l["layer_type"] not in ("walker", "celestrak")]
+        assert len(analysis_layers) >= 1, \
+            "Saved session should include analysis layers"
+
+        # Clear all layers
+        _, state = _api_request(port, "GET", "/api/state")
+        for layer in state["layers"]:
+            _api_request(port, "DELETE", f"/api/layer/{layer['layer_id']}")
+
+        # Load session
+        status, body = _api_request(port, "POST", "/api/session/load", {
+            "session": session_data,
+        })
+        assert status == 200
+
+        # Verify analysis layers are restored (not just constellations)
+        _, state = _api_request(port, "GET", "/api/state")
+        restored_types = [l["layer_type"] for l in state["layers"]]
+        assert "eclipse" in restored_types, \
+            f"Analysis layers should be restored. Got types: {restored_types}"
+
+    def test_save_session_includes_analysis_source_index(self, running_server):
+        """Saved analysis layers should include source_layer_index for restore."""
+        port, mgr = running_server
+        # Add constellation + analysis
+        status, body = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 2, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "SaveSrc",
+            },
+        })
+        source_id = body["layer_id"]
+        _api_request(port, "POST", "/api/analysis", {
+            "type": "coverage",
+            "source_layer": source_id,
+            "params": {"lat_step_deg": 20.0},
+        })
+
+        # Save and check
+        _, save_resp = _api_request(port, "POST", "/api/session/save")
+        session = save_resp["session"]
+        analysis_layers = [l for l in session["layers"]
+                          if l["layer_type"] == "coverage"]
+        assert len(analysis_layers) == 1
+        # Must have source_layer_index to know which constellation to use on restore
+        assert "source_layer_index" in analysis_layers[0], \
+            "Analysis layer save must include source_layer_index for restore"
+
+
+class TestCapToastInResponse:
+    """Verify capped_from info is included in analysis creation response."""
+
+    def test_analysis_creation_includes_capped_from(self, running_server):
+        """POST /api/analysis response should include capped_from when truncated."""
+        port, mgr = running_server
+        # Add a large constellation
+        status, body = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 6, "sats_per_plane": 20,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "CapTest",
+            },
+        })
+        source_id = body["layer_id"]
+
+        # Add ISL analysis (triggers capping at _MAX_TOPOLOGY_SATS=100)
+        status, body = _api_request(port, "POST", "/api/analysis", {
+            "type": "isl",
+            "source_layer": source_id,
+            "params": {},
+        })
+        assert status == 201
+
+        # Check state for the new layer
+        _, state = _api_request(port, "GET", "/api/state")
+        isl_layers = [l for l in state["layers"] if l["layer_type"] == "isl"]
+        assert len(isl_layers) == 1
+        assert "capped_from" in isl_layers[0], \
+            "ISL layer should show capped_from in state"
+        assert isl_layers[0]["capped_from"] == 120
+
+
+class TestMalformedInput:
+    """BUG-018: Tests for malformed input handling."""
+
+    def test_malformed_json_body_returns_400(self, running_server):
+        """Non-JSON body with valid Content-Length should return 400."""
+        port, _ = running_server
+        import http.client
+        conn = http.client.HTTPConnection("localhost", port, timeout=5)
+        body = b"not valid json"
+        conn.request("POST", "/api/constellation",
+                     body=body,
+                     headers={"Content-Type": "application/json",
+                              "Content-Length": str(len(body))})
+        resp = conn.getresponse()
+        assert resp.status == 400
+
+    def test_options_preflight(self, running_server):
+        """OPTIONS request should return 204 with CORS headers."""
+        port, _ = running_server
+        import http.client
+        conn = http.client.HTTPConnection("localhost", port, timeout=5)
+        conn.request("OPTIONS", "/api/state")
+        resp = conn.getresponse()
+        assert resp.status == 204
+
+    def test_unknown_method_returns_error(self, running_server):
+        """PATCH request should get an error response."""
+        port, _ = running_server
+        import http.client
+        conn = http.client.HTTPConnection("localhost", port, timeout=5)
+        conn.request("PATCH", "/api/state")
+        resp = conn.getresponse()
+        # Should get 501 (not implemented) or similar error
+        assert resp.status >= 400
+
+    def test_put_layer_rename(self, running_server):
+        """PUT /api/layer/{id} with name field should rename."""
+        port, _ = running_server
+        status, body = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 2, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "RenameTest",
+            },
+        })
+        layer_id = body["layer_id"]
+        status, body = _api_request(port, "PUT", f"/api/layer/{layer_id}", {
+            "name": "NewName",
+        })
+        assert status == 200
+        # Verify name changed in state
+        _, state = _api_request(port, "GET", "/api/state")
+        assert state["layers"][0]["name"] == "NewName"
+
+    def test_unknown_analysis_type_returns_400(self, running_server):
+        """Unknown analysis type should return 400."""
+        port, _ = running_server
+        _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 2, "sats_per_plane": 2,
+            },
+        })
+        _, state = _api_request(port, "GET", "/api/state")
+        source_id = state["layers"][0]["layer_id"]
+        status, body = _api_request(port, "POST", "/api/analysis", {
+            "type": "nonexistent_type",
+            "source_layer": source_id,
+        })
+        assert status == 400
+
+    def test_analysis_with_invalid_source_returns_404(self, running_server):
+        """Analysis with missing source layer should return 404."""
+        port, _ = running_server
+        status, body = _api_request(port, "POST", "/api/analysis", {
+            "type": "eclipse",
+            "source_layer": "layer-999",
+        })
+        assert status == 404
+
+    def test_delete_nonexistent_layer_returns_404(self, running_server):
+        """DELETE on nonexistent layer should return 404."""
+        port, _ = running_server
+        status, body = _api_request(port, "DELETE", "/api/layer/layer-999")
+        assert status == 404
+
+    def test_ground_station_without_constellation(self, running_server):
+        """Ground station without any constellation should still succeed."""
+        port, _ = running_server
+        status, body = _api_request(port, "POST", "/api/ground-station", {
+            "name": "NoConst",
+            "lat": 51.5,
+            "lon": -0.12,
+        })
+        # Should succeed (empty access windows) or fail gracefully
+        assert status in (201, 400, 500)
+
+    def test_max_body_size_enforcement(self, running_server):
+        """Body exceeding 10MB should be rejected."""
+        port, _ = running_server
+        import http.client
+        conn = http.client.HTTPConnection("localhost", port, timeout=5)
+        # Claim a body of 11MB but only send a small amount
+        conn.putrequest("POST", "/api/constellation")
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Content-Length", str(11 * 1024 * 1024))
+        conn.endheaders(b'{}')
+        resp = conn.getresponse()
+        assert resp.status == 400
+
+
+class TestThreadSafety:
+    """BUG-001/002: LayerManager must be thread-safe under concurrent access."""
+
+    def test_layer_manager_has_lock(self):
+        """LayerManager must have an RLock for thread safety."""
+        from humeris.adapters.viewer_server import LayerManager
+        import threading
+
+        lm = LayerManager(EPOCH)
+        assert hasattr(lm, "_lock"), "LayerManager must have a _lock attribute"
+        assert isinstance(lm._lock, type(threading.RLock())), \
+            "LayerManager._lock must be an RLock"
+
+    def test_concurrent_add_unique_ids(self):
+        """Concurrent add_layer calls must produce unique layer IDs."""
+        from humeris.adapters.viewer_server import LayerManager
+
+        lm = LayerManager(EPOCH)
+        states = _make_states()
+        ids: list[str] = []
+        errors: list[Exception] = []
+
+        def add_layer(n):
+            try:
+                lid = lm.add_layer(
+                    name=f"Test-{n}", category="Constellation",
+                    layer_type="walker", states=states, params={},
+                )
+                ids.append(lid)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=add_layer, args=(i,)) for i in range(20)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, f"Errors during concurrent add: {errors}"
+        assert len(ids) == 20, f"Expected 20 IDs, got {len(ids)}"
+        assert len(set(ids)) == 20, f"Duplicate IDs: {ids}"
+
+    def test_concurrent_add_remove_no_crash(self):
+        """Concurrent add + remove must not raise RuntimeError."""
+        from humeris.adapters.viewer_server import LayerManager
+
+        lm = LayerManager(EPOCH)
+        states = _make_states()
+        errors: list[Exception] = []
+
+        # Pre-populate some layers
+        pre_ids = []
+        for i in range(10):
+            pre_ids.append(lm.add_layer(
+                name=f"Pre-{i}", category="Constellation",
+                layer_type="walker", states=states, params={},
+            ))
+
+        def add_layers():
+            for i in range(10):
+                try:
+                    lm.add_layer(
+                        name=f"Add-{i}", category="Constellation",
+                        layer_type="walker", states=states, params={},
+                    )
+                except Exception as e:
+                    errors.append(e)
+
+        def remove_layers():
+            for lid in pre_ids:
+                try:
+                    lm.remove_layer(lid)
+                except KeyError:
+                    pass  # Already removed
+                except Exception as e:
+                    errors.append(e)
+
+        def read_state():
+            for _ in range(20):
+                try:
+                    lm.get_state()
+                except Exception as e:
+                    errors.append(e)
+
+        threads = [
+            threading.Thread(target=add_layers),
+            threading.Thread(target=remove_layers),
+            threading.Thread(target=read_state),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, f"Errors during concurrent operations: {errors}"
+
+
+class TestSecondPassFixes:
+    """Tests for second-pass audit fixes (BUG-031 through Gap-7)."""
+
+    def test_update_layer_mode_does_not_block_get_state(self, running_server):
+        """BUG-031: update_layer mode switch should not hold the lock during CZML gen."""
+        port, mgr = running_server
+        status, data = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 1, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "LockTest",
+            },
+        })
+        assert status == 201
+        lid = data["layer_id"]
+
+        # Launch mode switch in a thread
+        errors = []
+        def switch_mode():
+            try:
+                _api_request(port, "PUT", f"/api/layer/{lid}", {"mode": "snapshot"})
+            except Exception as e:
+                errors.append(e)
+
+        t = threading.Thread(target=switch_mode)
+        t.start()
+        # get_state should not be blocked for the full duration of CZML gen
+        status, state = _api_request(port, "GET", "/api/state")
+        t.join(timeout=30)
+        assert status == 200
+        assert "layers" in state
+        assert not errors
+
+    def test_ground_station_restored_on_session_load(self, running_server):
+        """BUG-035: Ground stations should survive save/load cycle."""
+        port, mgr = running_server
+        # Add constellation first
+        _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 1, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "GSTest",
+            },
+        })
+
+        # Add ground station
+        _api_request(port, "POST", "/api/ground-station", {
+            "name": "TestGS", "lat": 52.0, "lon": 4.9,
+        })
+
+        # Save session
+        _, save_resp = _api_request(port, "POST", "/api/session/save")
+        session = save_resp["session"]
+
+        # Verify ground station is in saved data
+        gs_layers = [l for l in session["layers"]
+                     if l.get("layer_type") == "ground_station"]
+        assert len(gs_layers) == 1, "Ground station should be in saved session"
+
+        # Load session (clears and restores)
+        status, result = _api_request(port, "POST", "/api/session/load",
+                                      {"session": session})
+        assert status == 200
+
+        # Check state — should have constellation + ground station
+        _, state = _api_request(port, "GET", "/api/state")
+        gs_restored = [l for l in state["layers"]
+                       if l.get("layer_type") == "ground_station"]
+        assert len(gs_restored) == 1, \
+            f"Ground station not restored. Layers: {[l.get('layer_type') for l in state['layers']]}"
+
+    def test_visible_state_preserved_on_session_load(self, running_server):
+        """Gap-7: Hidden layers should stay hidden after save/load."""
+        port, mgr = running_server
+        # Add constellation
+        status, data = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 1, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "VisTest",
+            },
+        })
+        lid = data["layer_id"]
+
+        # Hide the layer
+        _api_request(port, "PUT", f"/api/layer/{lid}", {"visible": False})
+
+        # Save session
+        _, save_resp = _api_request(port, "POST", "/api/session/save")
+        session = save_resp["session"]
+        assert session["layers"][0]["visible"] is False
+
+        # Load session
+        _api_request(port, "POST", "/api/session/load", {"session": session})
+
+        # Check state — layer should still be hidden
+        _, state = _api_request(port, "GET", "/api/state")
+        assert state["layers"][0]["visible"] is False, \
+            "Layer visibility should be preserved across save/load"
+
+
+class TestParamsMutationIsolation:
+    """R2-01/BUG-037: _generate_czml must not mutate stored params."""
+
+    def test_add_layer_params_not_mutated_by_czml_gen(self):
+        """Params stored in LayerState must not contain _capped_from after add_layer."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(EPOCH)
+        states = _make_states()
+        original_params = {"max_range_km": 5000.0}
+        lid = mgr.add_layer(
+            name="ISL", category="Analysis", layer_type="isl",
+            states=states, params=original_params,
+        )
+        # The caller's dict must not have been mutated
+        assert "_capped_from" not in original_params, \
+            "Caller's params dict was mutated by _generate_czml"
+
+    def test_recompute_does_not_mutate_caller_params(self):
+        """Recompute must not leak _capped_from into the caller's params dict."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(EPOCH)
+        states = _make_states()
+        lid = mgr.add_layer(
+            name="Precession", category="Analysis", layer_type="precession",
+            states=states, params={},
+        )
+        caller_params = {"some_key": "value"}
+        mgr.recompute_analysis(lid, caller_params)
+        assert "_capped_from" not in caller_params, \
+            "Caller's params dict was mutated by recompute_analysis"
+
+
+class TestExportCORS:
+    """R2-02/BUG-039: Export endpoint must include full CORS headers."""
+
+    def test_export_includes_cors_methods_header(self, running_server):
+        """Export response must include Access-Control-Allow-Methods."""
+        port, mgr = running_server
+        _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 1, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "CORSTest",
+            },
+        })
+        _, state = _api_request(port, "GET", "/api/state")
+        lid = state["layers"][0]["layer_id"]
+        # Direct request to export endpoint to check headers
+        url = f"http://localhost:{port}/api/export/{lid}"
+        req = urllib.request.Request(url, method="GET")
+        resp = urllib.request.urlopen(req, timeout=10)
+        allow_methods = resp.headers.get("Access-Control-Allow-Methods", "")
+        allow_headers = resp.headers.get("Access-Control-Allow-Headers", "")
+        assert "GET" in allow_methods, \
+            f"Export missing Allow-Methods, got: '{allow_methods}'"
+        assert "Content-Type" in allow_headers, \
+            f"Export missing Allow-Headers, got: '{allow_headers}'"
+
+
+class TestSessionLoadValidation:
+    """R2-04/Gap-4: Malformed session data must return clean errors."""
+
+    def test_non_list_layers_returns_400(self, running_server):
+        """Session with layers as a string should return 400."""
+        port, mgr = running_server
+        status, body = _api_request(port, "POST", "/api/session/load", {
+            "session": {"layers": "not-a-list"},
+        })
+        assert status == 400, f"Expected 400 for non-list layers, got {status}"
+
+    def test_non_dict_layer_entry_skipped(self, running_server):
+        """Session with non-dict entries in layers should skip them gracefully."""
+        port, mgr = running_server
+        status, body = _api_request(port, "POST", "/api/session/load", {
+            "session": {"layers": ["not-a-dict", 42, None]},
+        })
+        # Should not crash — restores 0 layers
+        assert status == 200
+        assert body.get("restored", 0) == 0
+
+
+class TestConcurrentSessionLoad:
+    """R2-05/Gap-5: Concurrent session load must not crash."""
+
+    def test_concurrent_load_and_add(self, running_server):
+        """Simultaneous session load and constellation add must not crash."""
+        port, mgr = running_server
+        # Create a simple session to load
+        session = {
+            "layers": [{
+                "name": "ConcTest", "category": "Constellation",
+                "layer_type": "walker", "mode": "animated",
+                "params": {
+                    "altitude_km": 550, "inclination_deg": 53,
+                    "num_planes": 1, "sats_per_plane": 2,
+                    "phase_factor": 1, "raan_offset_deg": 0,
+                    "shell_name": "ConcLoad",
+                },
+            }],
+        }
+        errors = []
+
+        def load_session():
+            try:
+                _api_request(port, "POST", "/api/session/load", {"session": session})
+            except Exception as e:
+                errors.append(("load", e))
+
+        def add_constellation():
+            try:
+                _api_request(port, "POST", "/api/constellation", {
+                    "type": "walker",
+                    "params": {
+                        "altitude_km": 800, "inclination_deg": 97,
+                        "num_planes": 1, "sats_per_plane": 2,
+                        "phase_factor": 1, "raan_offset_deg": 0,
+                        "shell_name": "ConcAdd",
+                    },
+                })
+            except Exception as e:
+                errors.append(("add", e))
+
+        threads = []
+        for _ in range(3):
+            threads.append(threading.Thread(target=load_session))
+            threads.append(threading.Thread(target=add_constellation))
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+        assert not errors, f"Concurrent operations crashed: {errors}"
+
+
+class TestCelesTrakRestoreFidelity:
+    """R2-03/Gap-3: CelesTrak layer params must survive save/load."""
+
+    def test_celestrak_params_preserved_on_restore(self, running_server):
+        """CelesTrak layer should restore with original params."""
+        port, mgr = running_server
+        # Manually create a session with a CelesTrak layer that has specific params
+        session = {
+            "layers": [{
+                "name": "CelesTrak:GPS-OPS", "category": "Constellation",
+                "layer_type": "celestrak", "mode": "animated",
+                "visible": True,
+                "params": {
+                    "group": "GPS-OPS",
+                    "altitude_km": 20200, "inclination_deg": 55,
+                    "num_planes": 6, "sats_per_plane": 5,
+                    "phase_factor": 1, "raan_offset_deg": 0,
+                    "shell_name": "GPS-OPS",
+                },
+            }],
+        }
+        status, body = _api_request(port, "POST", "/api/session/load",
+                                    {"session": session})
+        assert status == 200
+        assert body["restored"] == 1
+
+        # Save and check params are preserved
+        _, save_resp = _api_request(port, "POST", "/api/session/save")
+        restored_layer = save_resp["session"]["layers"][0]
+        assert restored_layer["params"]["altitude_km"] == 20200
+        assert restored_layer["params"]["inclination_deg"] == 55
+        assert restored_layer["params"]["group"] == "GPS-OPS"
+
+
 class TestViewerServerPurity:
     """Adapter purity: only stdlib + internal imports allowed."""
 
@@ -1166,7 +2023,7 @@ class TestViewerServerPurity:
 
         allowed_stdlib = {
             "json", "http", "threading", "datetime", "dataclasses",
-            "uuid", "urllib", "functools", "math", "numpy", "logging", "typing",
+            "urllib", "functools", "math", "numpy", "logging", "typing",
             "socketserver",
         }
         allowed_internal = {"humeris"}
