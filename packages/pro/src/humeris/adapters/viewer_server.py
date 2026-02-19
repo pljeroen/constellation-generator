@@ -17,6 +17,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+import socketserver
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Any
 
@@ -90,6 +91,80 @@ _DEFAULT_SENSOR = SensorConfig(sensor_type=SensorType.CIRCULAR, half_angle_deg=3
 _DEFAULT_DRAG = DragConfig(cd=2.2, area_m2=0.01, mass_kg=4.0)
 _MAX_TOPOLOGY_SATS = 100   # Cap for O(n²) computations
 _MAX_PRECESSION_SATS = 24  # Subset for week-long precession view
+_GROUND_STATION_SAT_LIMIT = 20  # Max sats for ground station access computation
+
+# Color legends for analysis types
+_LEGENDS: dict[str, list[dict[str, str]]] = {
+    "eclipse": [
+        {"label": "Sunlit", "color": "#FFD700"},
+        {"label": "Penumbra", "color": "#FF8C00"},
+        {"label": "Umbra", "color": "#8B0000"},
+    ],
+    "coverage": [
+        {"label": "0 sats", "color": "#000080"},
+        {"label": "1-2 sats", "color": "#0000FF"},
+        {"label": "3-5 sats", "color": "#00FF00"},
+        {"label": "6+ sats", "color": "#FF0000"},
+    ],
+    "isl": [
+        {"label": "High SNR", "color": "#00FF00"},
+        {"label": "Medium SNR", "color": "#FFFF00"},
+        {"label": "Low SNR", "color": "#FF0000"},
+    ],
+    "fragility": [
+        {"label": "Robust", "color": "#00FF00"},
+        {"label": "Moderate", "color": "#FFFF00"},
+        {"label": "Fragile", "color": "#FF0000"},
+    ],
+    "hazard": [
+        {"label": "Long lifetime", "color": "#00FF00"},
+        {"label": "Medium", "color": "#FFFF00"},
+        {"label": "Short lifetime", "color": "#FF0000"},
+    ],
+    "radiation": [
+        {"label": "Low dose", "color": "#00FF00"},
+        {"label": "Medium dose", "color": "#FFFF00"},
+        {"label": "High dose", "color": "#FF0000"},
+    ],
+    "kessler_heatmap": [
+        {"label": "Low density", "color": "#000080"},
+        {"label": "Medium density", "color": "#FFFF00"},
+        {"label": "High density", "color": "#FF0000"},
+    ],
+    "conjunction_hazard": [
+        {"label": "Green", "color": "#00FF00"},
+        {"label": "Yellow", "color": "#FFFF00"},
+        {"label": "Red", "color": "#FF0000"},
+    ],
+    "deorbit": [
+        {"label": "Compliant", "color": "#00FF00"},
+        {"label": "Non-compliant", "color": "#FF0000"},
+    ],
+    "station_keeping": [
+        {"label": "Low dV", "color": "#00FF00"},
+        {"label": "Medium dV", "color": "#FFFF00"},
+        {"label": "High dV", "color": "#FF0000"},
+    ],
+    "maintenance": [
+        {"label": "Nominal", "color": "#00FF00"},
+        {"label": "Due soon", "color": "#FFFF00"},
+        {"label": "Overdue", "color": "#FF0000"},
+    ],
+    "beta_angle": [
+        {"label": "Low beta", "color": "#0000FF"},
+        {"label": "High beta", "color": "#FF8C00"},
+    ],
+    "network_eclipse": [
+        {"label": "Both sunlit", "color": "#00FF00"},
+        {"label": "One eclipsed", "color": "#FFFF00"},
+        {"label": "Both eclipsed", "color": "#FF0000"},
+    ],
+    "cascade_sir": [
+        {"label": "Susceptible", "color": "#00FF00"},
+        {"label": "Infected", "color": "#FF0000"},
+        {"label": "Removed", "color": "#808080"},
+    ],
+}
 
 
 @dataclass
@@ -197,6 +272,8 @@ def _generate_czml(
         link = params.get("_link_config", _DEFAULT_LINK_CONFIG)
         max_range = params.get("max_range_km", 5000.0)
         capped = states[:_MAX_TOPOLOGY_SATS]
+        if len(states) > _MAX_TOPOLOGY_SATS:
+            params["_capped_from"] = len(states)
         dur_s = duration.total_seconds()
         step_s = step.total_seconds()
         return isl_topology_packets(
@@ -208,6 +285,8 @@ def _generate_czml(
         import math as _math
         link = params.get("_link_config", _DEFAULT_LINK_CONFIG)
         capped = states[:_MAX_TOPOLOGY_SATS]
+        if len(states) > _MAX_TOPOLOGY_SATS:
+            params["_capped_from"] = len(states)
         if capped:
             sma = capped[0].semi_major_axis_m
             n_rad_s = _math.sqrt(OrbitalConstants.MU_EARTH / sma ** 3)
@@ -249,6 +328,8 @@ def _generate_czml(
         link = params.get("_link_config", _DEFAULT_LINK_CONFIG)
         max_range = params.get("max_range_km", 5000.0)
         capped = states[:_MAX_TOPOLOGY_SATS]
+        if len(states) > _MAX_TOPOLOGY_SATS:
+            params["_capped_from"] = len(states)
         dur_s = duration.total_seconds()
         step_s = step.total_seconds()
         return network_eclipse_packets(
@@ -259,6 +340,8 @@ def _generate_czml(
     if layer_type == "coverage_connectivity":
         link = params.get("_link_config", _DEFAULT_LINK_CONFIG)
         capped = states[:_MAX_TOPOLOGY_SATS]
+        if len(states) > _MAX_TOPOLOGY_SATS:
+            params["_capped_from"] = len(states)
         dur_s = duration.total_seconds()
         step_s = step.total_seconds()
         return coverage_connectivity_packets(
@@ -267,6 +350,8 @@ def _generate_czml(
 
     if layer_type == "precession":
         subset = states[:_MAX_PRECESSION_SATS]
+        if len(states) > _MAX_PRECESSION_SATS:
+            params["_capped_from"] = len(states)
         prec_duration = timedelta(days=7)
         prec_step = timedelta(minutes=15)
         return constellation_packets(
@@ -278,6 +363,8 @@ def _generate_czml(
 
     if layer_type == "conjunction_hazard":
         capped = states[:_MAX_TOPOLOGY_SATS]
+        if len(states) > _MAX_TOPOLOGY_SATS:
+            params["_capped_from"] = len(states)
         return conjunction_hazard_packets(
             capped, epoch, duration, step, name=name,
         )
@@ -371,6 +458,8 @@ class LayerManager:
         self.epoch = epoch
         self.layers: dict[str, LayerState] = {}
         self._counter = 0
+        self.duration = _DEFAULT_DURATION
+        self.step = _DEFAULT_STEP
 
     def _next_id(self) -> str:
         self._counter += 1
@@ -461,7 +550,7 @@ class LayerManager:
         """Return all layer metadata (no CZML data)."""
         layers_info = []
         for layer in self.layers.values():
-            layers_info.append({
+            info: dict[str, Any] = {
                 "layer_id": layer.layer_id,
                 "name": layer.name,
                 "category": layer.category,
@@ -473,10 +562,52 @@ class LayerManager:
                     k: v for k, v in layer.params.items()
                     if not k.startswith("_")
                 },
+            }
+            if "_capped_from" in layer.params:
+                info["capped_from"] = layer.params["_capped_from"]
+            if layer.layer_type in _LEGENDS:
+                info["legend"] = _LEGENDS[layer.layer_type]
+            layers_info.append(info)
+        return {
+            "epoch": self.epoch.isoformat(),
+            "duration_s": self.duration.total_seconds(),
+            "step_s": self.step.total_seconds(),
+            "layers": layers_info,
+        }
+
+    def recompute_analysis(self, layer_id: str, params: dict[str, Any]) -> None:
+        """Recompute an analysis layer with updated params."""
+        if layer_id not in self.layers:
+            raise KeyError(f"Layer not found: {layer_id}")
+        layer = self.layers[layer_id]
+        # Merge new params (preserve internal _ params)
+        internal = {k: v for k, v in layer.params.items() if k.startswith("_")}
+        layer.params = {**params, **internal}
+        layer.czml = _generate_czml(
+            layer.layer_type, layer.mode, layer.states,
+            self.epoch, layer.name, layer.params,
+        )
+
+    def save_session(self) -> dict[str, Any]:
+        """Serialize current session state for save/restore."""
+        layers = []
+        for layer in self.layers.values():
+            layers.append({
+                "name": layer.name,
+                "category": layer.category,
+                "layer_type": layer.layer_type,
+                "mode": layer.mode,
+                "visible": layer.visible,
+                "params": {
+                    k: v for k, v in layer.params.items()
+                    if not k.startswith("_")
+                },
             })
         return {
             "epoch": self.epoch.isoformat(),
-            "layers": layers_info,
+            "duration_s": self.duration.total_seconds(),
+            "step_s": self.step.total_seconds(),
+            "layers": layers,
         }
 
     def get_czml(self, layer_id: str) -> list[dict[str, Any]]:
@@ -484,6 +615,11 @@ class LayerManager:
         if layer_id not in self.layers:
             raise KeyError(f"Layer not found: {layer_id}")
         return self.layers[layer_id].czml
+
+
+class ThreadingHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
+    """HTTP server that handles each request in a new thread."""
+    daemon_threads = True
 
 
 class ConstellationHandler(BaseHTTPRequestHandler):
@@ -558,6 +694,23 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                 self._error_response(404, f"Layer not found: {param}")
             return
 
+        if base == "/api/export" and param:
+            try:
+                czml = self.layer_manager.get_czml(param)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header(
+                    "Content-Disposition",
+                    f'attachment; filename="{param}.czml"',
+                )
+                port = self.server.server_address[1]
+                self.send_header("Access-Control-Allow-Origin", f"http://localhost:{port}")
+                self.end_headers()
+                self.wfile.write(json.dumps(czml, indent=2).encode())
+            except KeyError:
+                self._error_response(404, f"Layer not found: {param}")
+            return
+
         self._error_response(404, "Not found")
 
     # --- POST ---
@@ -575,6 +728,15 @@ class ConstellationHandler(BaseHTTPRequestHandler):
 
         if base == "/api/ground-station":
             self._handle_add_ground_station()
+            return
+
+        if base == "/api/session" and param == "save":
+            session = self.layer_manager.save_session()
+            self._json_response({"session": session})
+            return
+
+        if base == "/api/session" and param == "load":
+            self._handle_load_session()
             return
 
         self._error_response(404, "Not found")
@@ -681,7 +843,7 @@ class ConstellationHandler(BaseHTTPRequestHandler):
             self._json_response({"layer_id": layer_id}, 201)
         except (ValueError, TypeError, KeyError, ArithmeticError) as e:
             logger.exception("Analysis generation failed")
-            self._error_response(500, "Analysis generation failed")
+            self._error_response(500, f"Analysis generation failed: {e}")
 
     def _handle_add_ground_station(self) -> None:
         body = self._read_body()
@@ -705,12 +867,57 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                 name=name,
                 lat_deg=lat,
                 lon_deg=lon,
-                source_states=source_states[:6],  # limit for performance
+                source_states=source_states[:_GROUND_STATION_SAT_LIMIT],
             )
             self._json_response({"layer_id": layer_id}, 201)
         except (ValueError, TypeError, KeyError) as e:
             logger.exception("Ground station failed")
-            self._error_response(500, "Ground station failed")
+            self._error_response(500, f"Ground station failed: {e}")
+
+    def _handle_load_session(self) -> None:
+        body = self._read_body()
+        session = body.get("session", {})
+        layers_data = session.get("layers", [])
+
+        # Restore duration/step if present
+        if "duration_s" in session:
+            self.layer_manager.duration = timedelta(seconds=session["duration_s"])
+        if "step_s" in session:
+            self.layer_manager.step = timedelta(seconds=session["step_s"])
+
+        # Restore walker layers (re-generate from params)
+        restored = 0
+        for layer_data in layers_data:
+            lt = layer_data.get("layer_type", "")
+            params = layer_data.get("params", {})
+            if lt in ("walker", "celestrak") and lt == "walker":
+                try:
+                    config = ShellConfig(
+                        altitude_km=params.get("altitude_km", 550),
+                        inclination_deg=params.get("inclination_deg", 53),
+                        num_planes=params.get("num_planes", 6),
+                        sats_per_plane=params.get("sats_per_plane", 10),
+                        phase_factor=params.get("phase_factor", 1),
+                        raan_offset_deg=params.get("raan_offset_deg", 0),
+                        shell_name=params.get("shell_name", "Walker"),
+                    )
+                    sats = generate_walker_shell(config)
+                    states = [
+                        derive_orbital_state(s, self.layer_manager.epoch, include_j2=True)
+                        for s in sats
+                    ]
+                    self.layer_manager.add_layer(
+                        name=layer_data.get("name", f"Constellation:{config.shell_name}"),
+                        category=layer_data.get("category", "Constellation"),
+                        layer_type=lt,
+                        states=states,
+                        params=params,
+                        mode=layer_data.get("mode"),
+                    )
+                    restored += 1
+                except (KeyError, TypeError, ValueError):
+                    pass
+        self._json_response({"restored": restored})
 
     # --- PUT ---
 
@@ -733,6 +940,30 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                 })
             except KeyError:
                 self._error_response(404, f"Layer not found: {param}")
+            return
+
+        if base == "/api/analysis" and param:
+            body = self._read_body()
+            params = body.get("params", {})
+            try:
+                self.layer_manager.recompute_analysis(param, params)
+                self._json_response({"status": "recomputed", "layer_id": param})
+            except KeyError:
+                self._error_response(404, f"Layer not found: {param}")
+            except (ValueError, TypeError, ArithmeticError) as e:
+                self._error_response(500, f"Recomputation failed: {e}")
+            return
+
+        if base == "/api/settings":
+            body = self._read_body()
+            if "duration_s" in body:
+                self.layer_manager.duration = timedelta(seconds=body["duration_s"])
+            if "step_s" in body:
+                self.layer_manager.step = timedelta(seconds=body["step_s"])
+            self._json_response({
+                "duration_s": self.layer_manager.duration.total_seconds(),
+                "step_s": self.layer_manager.step.total_seconds(),
+            })
             return
 
         self._error_response(404, "Not found")
@@ -793,5 +1024,5 @@ def create_viewer_server(
         },
     )
 
-    server = HTTPServer(("localhost", port), handler)
+    server = ThreadingHTTPServer(("localhost", port), handler)
     return server

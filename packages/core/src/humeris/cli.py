@@ -246,7 +246,18 @@ def _run_serve(port: int = 8765) -> None:
     except Exception as e:
         print(f"    ISS fetch skipped: {e}")
 
-    server = create_viewer_server(mgr, port=port)
+    try:
+        server = create_viewer_server(mgr, port=port)
+    except OSError as e:
+        if "Address already in use" in str(e) or e.errno == 98:
+            print(
+                f"Error: Port {port} is already in use.\n"
+                f"Try a different port: humeris --serve --port {port + 1}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        raise
+
     url = f"http://localhost:{port}"
     print(f"\nInteractive viewer at {url}")
     print("Press Ctrl+C to stop.\n")
@@ -459,8 +470,13 @@ def main():
             n = UboxExporter().export(satellites, args.export_ubox)
             print(f"Exported {n} satellites to {args.export_ubox} (Universe Sandbox .ubox)")
 
-    except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
+    except FileNotFoundError:
+        path = args.input
+        print(
+            f"Error: Input file not found: {path}\n"
+            f"Expected a simulation JSON file with 'Earth' and 'Satellite' entities.",
+            file=sys.stderr,
+        )
         sys.exit(1)
     except (ValueError, ConnectionError) as e:
         print(f"Error: {e}", file=sys.stderr)

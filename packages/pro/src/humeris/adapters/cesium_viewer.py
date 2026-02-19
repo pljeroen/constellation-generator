@@ -406,13 +406,70 @@ def generate_interactive_html(
             transform: translate(-50%, -50%); background: rgba(0,0,0,0.8);
             color: #fff; padding: 16px 24px; border-radius: 8px;
             font: 14px sans-serif; z-index: 1000;
+            align-items: center; gap: 10px;
         }}
+        #loadingIndicator .spinner {{
+            display: inline-block; width: 18px; height: 18px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff; border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }}
+        @keyframes spin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
+        #toastContainer {{
+            position: fixed; bottom: 16px; right: 16px;
+            z-index: 2000; display: flex; flex-direction: column-reverse; gap: 8px;
+        }}
+        .toast {{
+            padding: 10px 16px; border-radius: 6px; color: #fff;
+            font: 13px/1.4 sans-serif; max-width: 360px;
+            opacity: 0; transform: translateX(40px);
+            animation: toastIn 0.3s ease forwards;
+            cursor: pointer;
+        }}
+        .toast-info {{ background: rgba(40,100,200,0.9); }}
+        .toast-error {{ background: rgba(200,50,50,0.9); }}
+        .toast-success {{ background: rgba(40,160,80,0.9); }}
+        @keyframes toastIn {{ to {{ opacity: 1; transform: translateX(0); }} }}
+        #panelToggle {{
+            position: absolute; top: 48px; left: 8px;
+            width: 28px; height: 28px; z-index: 101;
+            background: rgba(0,0,0,0.7); color: #fff;
+            border: 1px solid rgba(255,255,255,0.2); border-radius: 4px;
+            cursor: pointer; font-size: 16px; line-height: 28px;
+            text-align: center; display: none;
+        }}
+        #panelToggle:hover {{ background: rgba(0,0,0,0.9); }}
+        #colorLegend {{
+            position: absolute; bottom: 48px; right: 8px;
+            background: rgba(0,0,0,0.8); color: #fff;
+            font: 11px/1.5 sans-serif; border-radius: 6px;
+            padding: 8px 12px; z-index: 100;
+            display: none; min-width: 120px;
+        }}
+        #colorLegend .legend-title {{
+            font-weight: bold; margin-bottom: 4px; font-size: 12px;
+        }}
+        .legend-entry {{
+            display: flex; align-items: center; gap: 6px; padding: 1px 0;
+        }}
+        .legend-swatch {{
+            width: 14px; height: 14px; border-radius: 2px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }}
+        .layer-stats {{
+            font-size: 10px; color: rgba(255,255,255,0.5);
+            padding: 0 12px 2px; font-style: italic;
+        }}
+        .session-buttons {{ display: flex; gap: 4px; padding: 4px 12px; }}
     </style>
 </head>
 <body>
     <div id="cesiumContainer"></div>
     <div id="infoOverlay">{safe_title}</div>
-    <div id="loadingIndicator">Loading...</div>
+    <div id="loadingIndicator"><span class="spinner"></span><span id="loadingText">Loading...</span></div>
+    <div id="toastContainer"></div>
+    <button id="panelToggle" onclick="togglePanel()" title="Toggle panel">&#9776;</button>
+    <div id="colorLegend"></div>
     <div id="sidePanel">
         <!-- Add Layer Section -->
         <details open>
@@ -441,6 +498,7 @@ def generate_interactive_html(
                             <select id="ct-group">
                                 <option value="">-- select --</option>
                                 <option value="STATIONS">ISS / Stations</option>
+                                <option value="ACTIVE">Active Satellites</option>
                                 <option value="STARLINK">Starlink</option>
                                 <option value="GPS-OPS">GPS</option>
                                 <option value="GLONASS">GLONASS</option>
@@ -450,6 +508,15 @@ def generate_interactive_html(
                                 <option value="ONEWEB">OneWeb</option>
                                 <option value="PLANET">Planet</option>
                                 <option value="SPIRE">Spire</option>
+                                <option value="WEATHER">Weather</option>
+                                <option value="GEO">Geostationary</option>
+                                <option value="INTELSAT">Intelsat</option>
+                                <option value="SES">SES</option>
+                                <option value="TELESAT">Telesat</option>
+                                <option value="AMATEUR">Amateur Radio</option>
+                                <option value="SCIENCE">Science</option>
+                                <option value="NOAA">NOAA</option>
+                                <option value="GOES">GOES</option>
                             </select>
                         </div>
                         <div class="form-row"><label>Or name</label><input type="text" id="ct-name" placeholder="e.g. ISS (ZARYA)"></div>
@@ -482,8 +549,22 @@ def generate_interactive_html(
                 <div style="color:rgba(255,255,255,0.4);font-style:italic">No layers yet</div>
             </div>
         </details>
-        <!-- Analysis Layers Section -->
+        <!-- Session Controls -->
+        <div class="session-buttons">
+            <button class="btn btn-sm" onclick="saveSession()">Save Session</button>
+            <button class="btn btn-sm" onclick="loadSession()">Load Session</button>
+        </div>
+        <!-- Simulation Settings Section -->
         <details>
+            <summary>Simulation</summary>
+            <div class="panel-section">
+                <div class="form-row"><label>Duration (h)</label><input type="number" id="sim-duration" value="2" min="0.1" step="0.5"></div>
+                <div class="form-row"><label>Step (s)</label><input type="number" id="sim-step" value="60" min="1" step="10"></div>
+                <button class="btn btn-sm" onclick="applySettings()">Apply</button>
+            </div>
+        </details>
+        <!-- Analysis Layers Section -->
+        <details open>
             <summary>Add Analysis</summary>
             <div class="panel-section">
                 <div style="color:rgba(255,255,255,0.5);font-size:11px;margin-bottom:6px">
@@ -493,36 +574,50 @@ def generate_interactive_html(
                     <label>Source</label>
                     <select id="analysis-source"></select>
                 </div>
+                <!-- Analysis parameter fields -->
+                <details>
+                    <summary style="font-size:11px;font-weight:normal;color:rgba(255,255,255,0.6)">Parameters</summary>
+                    <div class="panel-section" style="padding-top:2px">
+                        <div class="form-row"><label>Lat step</label><input type="number" id="param-lat-step" value="10" min="1" step="1" title="Grid latitude step (deg)"></div>
+                        <div class="form-row"><label>Lon step</label><input type="number" id="param-lon-step" value="10" min="1" step="1" title="Grid longitude step (deg)"></div>
+                        <div class="form-row"><label>Min elev</label><input type="number" id="param-min-elev" value="10" min="0" step="1" title="Minimum elevation angle (deg)"></div>
+                        <div class="form-row"><label>Max range</label><input type="number" id="param-max-range" value="5000" min="100" step="100" title="ISL max range (km)"></div>
+                        <div class="form-row"><label>Cd</label><input type="number" id="param-cd" value="2.2" min="0.1" step="0.1" title="Drag coefficient"></div>
+                        <div class="form-row"><label>Area (m²)</label><input type="number" id="param-area" value="0.01" min="0.001" step="0.001" title="Cross-section area"></div>
+                        <div class="form-row"><label>Mass (kg)</label><input type="number" id="param-mass" value="4.0" min="0.1" step="0.1" title="Satellite mass"></div>
+                    </div>
+                </details>
                 <div class="analysis-grid">
                     <div class="analysis-cat">Orbit &amp; Geometry</div>
-                    <button class="btn btn-sm" onclick="addAnalysis('eclipse')">Eclipse</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('ground_track')">Ground Track</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('precession')">Precession</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('beta_angle')">Beta Angle</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('relative_motion')">Relative Motion</button>
+                    <button class="btn btn-sm" title="Color satellites by shadow state (sunlit/penumbra/umbra)" onclick="addAnalysis('eclipse')">Eclipse</button>
+                    <button class="btn btn-sm" title="Sub-satellite ground trace of first satellite" onclick="addAnalysis('ground_track')">Ground Track</button>
+                    <button class="btn btn-sm" title="J2 RAAN drift over 7 days" onclick="addAnalysis('precession')">Precession</button>
+                    <button class="btn btn-sm" title="Solar beta angle snapshot" onclick="addAnalysis('beta_angle')">Beta Angle</button>
+                    <button class="btn btn-sm" title="Relative trajectory between two satellites" onclick="addAnalysis('relative_motion')">Relative Motion</button>
 
                     <div class="analysis-cat">Coverage &amp; Navigation</div>
-                    <button class="btn btn-sm" onclick="addAnalysis('coverage')">Coverage</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('sensor')">Sensor FOV</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('dop_grid')">DOP Grid</button>
+                    <button class="btn btn-sm" title="Grid heatmap of visible satellite count" onclick="addAnalysis('coverage')">Coverage</button>
+                    <button class="btn btn-sm" title="Ground-level field of view footprints" onclick="addAnalysis('sensor')">Sensor FOV</button>
+                    <button class="btn btn-sm" title="Dilution of precision heatmap" onclick="addAnalysis('dop_grid')">DOP Grid</button>
 
                     <div class="analysis-cat">Network &amp; Topology</div>
-                    <button class="btn btn-sm" onclick="addAnalysis('isl')">ISL Topology</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('fragility')">Fragility</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('network_eclipse')">Net Eclipse</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('coverage_connectivity')">Cov+Connect</button>
+                    <button class="btn btn-sm" title="Inter-satellite link topology colored by SNR" onclick="addAnalysis('isl')">ISL Topology</button>
+                    <button class="btn btn-sm" title="Spectral fragility index per satellite" onclick="addAnalysis('fragility')">Fragility</button>
+                    <button class="btn btn-sm" title="ISL links colored by endpoint eclipse state" onclick="addAnalysis('network_eclipse')">Net Eclipse</button>
+                    <button class="btn btn-sm" title="Coverage weighted by network connectivity" onclick="addAnalysis('coverage_connectivity')">Cov+Connect</button>
 
                     <div class="analysis-cat">Environment &amp; Risk</div>
-                    <button class="btn btn-sm" onclick="addAnalysis('radiation')">Radiation</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('hazard')">Hazard</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('kessler_heatmap')">Kessler</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('conjunction_hazard')">Conj Hazard</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('cascade_sir')">Cascade SIR</button>
+                    <button class="btn btn-sm" title="Radiation environment coloring" onclick="addAnalysis('radiation')">Radiation</button>
+                    <button class="btn btn-sm" title="Projected lifetime (green=long, red=short)" onclick="addAnalysis('hazard')">Hazard</button>
+                    <button class="btn btn-sm" title="Debris density heatmap by altitude and inclination" onclick="addAnalysis('kessler_heatmap')">Kessler</button>
+                    <button class="btn btn-sm" title="Conjunction screening with NASA hazard levels" onclick="addAnalysis('conjunction_hazard')">Conj Hazard</button>
+                    <button class="btn btn-sm" title="SIR epidemic debris cascade evolution" onclick="addAnalysis('cascade_sir')">Cascade SIR</button>
+                    <button class="btn btn-sm" title="Close approach replay between two satellites" onclick="addAnalysis('conjunction')">Conjunction</button>
 
                     <div class="analysis-cat">Operations &amp; Maintenance</div>
-                    <button class="btn btn-sm" onclick="addAnalysis('deorbit')">Deorbit</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('station_keeping')">Station-Keep</button>
-                    <button class="btn btn-sm" onclick="addAnalysis('maintenance')">Maintenance</button>
+                    <button class="btn btn-sm" title="Deorbit compliance status coloring" onclick="addAnalysis('deorbit')">Deorbit</button>
+                    <button class="btn btn-sm" title="Station-keeping delta-V budget coloring" onclick="addAnalysis('station_keeping')">Station-Keep</button>
+                    <button class="btn btn-sm" title="Maintenance schedule status coloring" onclick="addAnalysis('maintenance')">Maintenance</button>
                 </div>
             </div>
         </details>
@@ -574,11 +669,33 @@ def generate_interactive_html(
 
         function showLoading(msg) {{
             var el = document.getElementById("loadingIndicator");
-            el.textContent = msg || "Loading...";
-            el.style.display = "block";
+            document.getElementById("loadingText").textContent = msg || "Loading...";
+            el.style.display = "flex";
         }}
         function hideLoading() {{
             document.getElementById("loadingIndicator").style.display = "none";
+        }}
+        function showToast(msg, type) {{
+            type = type || "info";
+            var container = document.getElementById("toastContainer");
+            var toast = document.createElement("div");
+            toast.className = "toast toast-" + type;
+            toast.textContent = msg;
+            toast.onclick = function() {{ toast.remove(); }};
+            container.appendChild(toast);
+            var delay = type === "error" ? 8000 : type === "success" ? 3000 : 5000;
+            setTimeout(function() {{ toast.remove(); }}, delay);
+        }}
+        function togglePanel() {{
+            var panel = document.getElementById("sidePanel");
+            var btn = document.getElementById("panelToggle");
+            if (panel.style.display === "none") {{
+                panel.style.display = "";
+                btn.style.display = "none";
+            }} else {{
+                panel.style.display = "none";
+                btn.style.display = "block";
+            }}
         }}
 
         // --- API helpers ---
@@ -653,7 +770,7 @@ def generate_interactive_html(
                 hideLoading();
             }}).catch(function(e) {{
                 hideLoading();
-                alert("Walker error: " + e.message);
+                showToast("Walker error: " + e.message, "error");
             }});
         }}
 
@@ -661,7 +778,7 @@ def generate_interactive_html(
         function addCelesTrak() {{
             var group = document.getElementById("ct-group").value;
             var name = document.getElementById("ct-name").value;
-            if (!group && !name) {{ alert("Select a group or enter a name"); return; }}
+            if (!group && !name) {{ showToast("Select a group or enter a name", "error"); return; }}
             showLoading("Fetching from CelesTrak...");
             var params = {{}};
             if (group) params.group = group;
@@ -676,7 +793,7 @@ def generate_interactive_html(
                 hideLoading();
             }}).catch(function(e) {{
                 hideLoading();
-                alert("CelesTrak error: " + e.message);
+                showToast("CelesTrak error: " + e.message, "error");
             }});
         }}
 
@@ -699,19 +816,30 @@ def generate_interactive_html(
                 hideLoading();
             }}).catch(function(e) {{
                 hideLoading();
-                alert("Station error: " + e.message);
+                showToast("Station error: " + e.message, "error");
             }});
+        }}
+
+        // --- Gather analysis params from form ---
+        function gatherAnalysisParams() {{
+            return {{
+                lat_step_deg: parseFloat(document.getElementById("param-lat-step").value),
+                lon_step_deg: parseFloat(document.getElementById("param-lon-step").value),
+                min_elevation_deg: parseFloat(document.getElementById("param-min-elev").value),
+                max_range_km: parseFloat(document.getElementById("param-max-range").value),
+            }};
         }}
 
         // --- Add Analysis ---
         function addAnalysis(type) {{
             var sourceEl = document.getElementById("analysis-source");
-            if (!sourceEl.value) {{ alert("Select a source constellation first"); return; }}
+            if (!sourceEl.value) {{ showToast("Select a source constellation first", "error"); return; }}
             showLoading("Computing " + type + " analysis...");
+            var params = gatherAnalysisParams();
             apiPost("/api/analysis", {{
                 type: type,
                 source_layer: sourceEl.value,
-                params: {{}},
+                params: params,
             }}).then(function(resp) {{
                 return loadLayerCzml(resp.layer_id);
             }}).then(function() {{
@@ -719,7 +847,7 @@ def generate_interactive_html(
                 hideLoading();
             }}).catch(function(e) {{
                 hideLoading();
-                alert("Analysis error: " + e.message);
+                showToast("Analysis error: " + e.message, "error");
             }});
         }}
 
@@ -733,7 +861,7 @@ def generate_interactive_html(
                 }}
                 rebuildPanel();
             }}).catch(function(e) {{
-                alert("Remove error: " + e.message);
+                showToast("Remove error: " + e.message, "error");
             }});
         }}
 
@@ -757,7 +885,83 @@ def generate_interactive_html(
                 hideLoading();
             }}).catch(function(e) {{
                 hideLoading();
-                alert("Mode switch error: " + e.message);
+                showToast("Mode switch error: " + e.message, "error");
+            }});
+        }}
+
+        // --- Update color legend ---
+        function updateLegend(legend, title) {{
+            var el = document.getElementById("colorLegend");
+            if (!legend || legend.length === 0) {{
+                el.style.display = "none";
+                return;
+            }}
+            var html = '<div class="legend-title">' + (title || "Legend") + '</div>';
+            legend.forEach(function(entry) {{
+                html += '<div class="legend-entry">' +
+                    '<span class="legend-swatch" style="background:' + entry.color + '"></span>' +
+                    '<span>' + entry.label + '</span></div>';
+            }});
+            el.innerHTML = html;
+            el.style.display = "block";
+        }}
+
+        // --- Export layer CZML ---
+        function exportLayer(layerId) {{
+            window.open(API + "/api/export/" + layerId, "_blank");
+        }}
+
+        // --- Session save/load ---
+        function saveSession() {{
+            apiPost("/api/session/save", {{}}).then(function(resp) {{
+                var blob = new Blob([JSON.stringify(resp.session, null, 2)], {{type: "application/json"}});
+                var a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = "humeris-session.json";
+                a.click();
+                showToast("Session saved", "success");
+            }}).catch(function(e) {{
+                showToast("Save error: " + e.message, "error");
+            }});
+        }}
+        function loadSession() {{
+            var input = document.createElement("input");
+            input.type = "file";
+            input.accept = ".json";
+            input.onchange = function(ev) {{
+                var file = ev.target.files[0];
+                if (!file) return;
+                var reader = new FileReader();
+                reader.onload = function(e) {{
+                    try {{
+                        var session = JSON.parse(e.target.result);
+                        apiPost("/api/session/load", {{session: session}}).then(function() {{
+                            // Reload all layers
+                            apiGet("/api/state").then(function(state) {{
+                                state.layers.forEach(function(l) {{ loadLayerCzml(l.layer_id); }});
+                                setTimeout(rebuildPanel, 500);
+                            }});
+                            showToast("Session loaded", "success");
+                        }}).catch(function(err) {{
+                            showToast("Load error: " + err.message, "error");
+                        }});
+                    }} catch(err) {{
+                        showToast("Invalid session file", "error");
+                    }}
+                }};
+                reader.readAsText(file);
+            }};
+            input.click();
+        }}
+
+        // --- Apply simulation settings ---
+        function applySettings() {{
+            var dur = parseFloat(document.getElementById("sim-duration").value) * 3600;
+            var step = parseFloat(document.getElementById("sim-step").value);
+            apiPut("/api/settings", {{duration_s: dur, step_s: step}}).then(function() {{
+                showToast("Settings applied", "success");
+            }}).catch(function(e) {{
+                showToast("Settings error: " + e.message, "error");
             }});
         }}
 
@@ -769,8 +973,17 @@ def generate_interactive_html(
                 list.innerHTML = "";
                 sourceSelect.innerHTML = "";
 
+                // Update simulation settings from state
+                if (state.duration_s) {{
+                    document.getElementById("sim-duration").value = (state.duration_s / 3600).toFixed(1);
+                }}
+                if (state.step_s) {{
+                    document.getElementById("sim-step").value = state.step_s;
+                }}
+
                 if (state.layers.length === 0) {{
                     list.innerHTML = '<div style="color:rgba(255,255,255,0.4);font-style:italic">No layers yet</div>';
+                    document.getElementById("colorLegend").style.display = "none";
                     return;
                 }}
 
@@ -843,8 +1056,22 @@ def generate_interactive_html(
 
                         var countSpan = document.createElement("span");
                         countSpan.className = "entity-count";
-                        countSpan.textContent = "(" + layer.num_entities + ")";
+                        var countText = "(" + layer.num_entities + ")";
+                        if (layer.capped_from) {{
+                            countText = "(" + layer.num_entities + " of " + layer.capped_from + ")";
+                        }}
+                        countSpan.textContent = countText;
                         item.appendChild(countSpan);
+
+                        // Export button
+                        var expBtn = document.createElement("button");
+                        expBtn.className = "mode-toggle";
+                        expBtn.textContent = "\u2913";
+                        expBtn.title = "Export CZML";
+                        expBtn.onclick = (function(lid) {{
+                            return function() {{ exportLayer(lid); }};
+                        }})(layer.layer_id);
+                        item.appendChild(expBtn);
 
                         // Mode toggle
                         var modeBtn = document.createElement("button");
@@ -865,6 +1092,23 @@ def generate_interactive_html(
                         item.appendChild(rmBtn);
 
                         catDiv.appendChild(item);
+
+                        // Statistics line
+                        if (layer.num_entities > 0) {{
+                            var statsDiv = document.createElement("div");
+                            statsDiv.className = "layer-stats";
+                            var statsText = layer.layer_type + " | " + layer.num_entities + " entities";
+                            if (layer.capped_from) {{
+                                statsText += " (capped from " + layer.capped_from + ")";
+                            }}
+                            statsDiv.textContent = statsText;
+                            catDiv.appendChild(statsDiv);
+                        }}
+
+                        // Show legend for analysis layers
+                        if (layer.legend) {{
+                            updateLegend(layer.legend, layer.name.split(":").pop());
+                        }}
                     }});
 
                     list.appendChild(catDiv);

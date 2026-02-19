@@ -9,15 +9,14 @@ Usage:
 """
 from datetime import datetime, timedelta, timezone
 
-from humeris import (
-    ShellConfig,
-    derive_orbital_state,
+from humeris.domain.constellation import ShellConfig, generate_walker_shell
+from humeris.domain.propagation import derive_orbital_state
+from humeris.domain.trade_study import (
     generate_walker_configs,
-    generate_walker_shell,
     pareto_front_indices,
     run_walker_trade_study,
-    screen_conjunctions,
 )
+from humeris.domain.conjunction import screen_conjunctions
 from humeris.adapters.csv_exporter import CsvSatelliteExporter
 
 

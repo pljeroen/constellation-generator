@@ -773,6 +773,388 @@ class TestHttpApi:
 # ---------------------------------------------------------------------------
 
 
+class TestThreadedServer:
+    """Verify the server uses ThreadingMixIn for concurrent requests."""
+
+    def test_server_uses_threading_mixin(self):
+        """Server should use ThreadingMixIn so analysis doesn't block UI."""
+        from humeris.adapters.viewer_server import create_viewer_server, LayerManager
+        import socketserver
+        mgr = LayerManager(epoch=EPOCH)
+        server = create_viewer_server(mgr, port=0)
+        assert isinstance(server, socketserver.ThreadingMixIn), \
+            "Server should use ThreadingMixIn"
+        server.server_close()
+
+
+class TestCapMetadata:
+    """Verify cap metadata is surfaced when satellite count is capped."""
+
+    def test_state_includes_capped_from_for_isl(self):
+        """When ISL caps satellite count, state response shows original count."""
+        from humeris.adapters.viewer_server import LayerManager, _MAX_TOPOLOGY_SATS
+        mgr = LayerManager(epoch=EPOCH)
+        # Create enough states to trigger capping
+        states = _make_states(n_planes=6, n_sats=20)  # 120 > _MAX_TOPOLOGY_SATS
+        assert len(states) > _MAX_TOPOLOGY_SATS
+
+        layer_id = mgr.add_layer(
+            name="Analysis:ISL", category="Analysis",
+            layer_type="isl", states=states, params={},
+        )
+        state = mgr.get_state()
+        layer_info = [l for l in state["layers"] if l["layer_id"] == layer_id][0]
+        assert "capped_from" in layer_info, \
+            "Layer state should include capped_from when satellite count is capped"
+        assert layer_info["capped_from"] == len(states)
+
+    def test_state_includes_capped_from_for_precession(self):
+        """When precession caps satellite count, state response shows original count."""
+        from humeris.adapters.viewer_server import LayerManager, _MAX_PRECESSION_SATS
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=6, n_sats=20)  # 120 > _MAX_PRECESSION_SATS
+        assert len(states) > _MAX_PRECESSION_SATS
+
+        layer_id = mgr.add_layer(
+            name="Analysis:Precession", category="Analysis",
+            layer_type="precession", states=states, params={},
+        )
+        state = mgr.get_state()
+        layer_info = [l for l in state["layers"] if l["layer_id"] == layer_id][0]
+        assert "capped_from" in layer_info
+        assert layer_info["capped_from"] == len(states)
+
+    def test_no_capped_from_when_under_limit(self):
+        """No capped_from when satellite count is under the cap."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=2, n_sats=2)  # 4 sats
+        layer_id = mgr.add_layer(
+            name="Analysis:ISL", category="Analysis",
+            layer_type="isl", states=states, params={},
+        )
+        state = mgr.get_state()
+        layer_info = [l for l in state["layers"] if l["layer_id"] == layer_id][0]
+        assert "capped_from" not in layer_info
+
+
+class TestErrorForwarding:
+    """Verify analysis errors include actual error message."""
+
+    def test_analysis_error_includes_details(self, running_server):
+        """Analysis failure should include the actual error message, not generic text."""
+        port, mgr = running_server
+        # Add a source constellation first
+        status, body = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 2, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "Err-Test",
+            },
+        })
+        source_id = body["layer_id"]
+
+        # Patch _generate_czml to raise an error
+        with patch(
+            "humeris.adapters.viewer_server._generate_czml",
+            side_effect=ValueError("test error detail"),
+        ):
+            status, body = _api_request(port, "POST", "/api/analysis", {
+                "type": "eclipse",
+                "source_layer": source_id,
+                "params": {},
+            })
+        assert status == 500
+        assert "test error detail" in body.get("error", ""), \
+            f"Error response should contain actual error: {body}"
+
+
+class TestAnalysisParamsPassthrough:
+    """Verify analysis params from request are passed to _generate_czml."""
+
+    def test_coverage_params_passed(self):
+        """Coverage analysis params (lat_step, lon_step, min_elev) should pass through."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states()
+        # First add a constellation as source
+        source_id = mgr.add_layer(
+            name="Constellation:Source", category="Constellation",
+            layer_type="walker", states=states, params={},
+        )
+        # Now add coverage with explicit params
+        layer_id = mgr.add_layer(
+            name="Analysis:Coverage", category="Analysis",
+            layer_type="coverage", states=states,
+            params={"lat_step_deg": 20.0, "lon_step_deg": 20.0, "min_elevation_deg": 15.0},
+        )
+        layer = mgr.layers[layer_id]
+        # The params should have been stored and used
+        assert layer.params.get("lat_step_deg") == 20.0
+        assert layer.params.get("lon_step_deg") == 20.0
+        assert layer.params.get("min_elevation_deg") == 15.0
+
+    def test_isl_max_range_passed(self):
+        """ISL analysis max_range_km param should pass through."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states()
+        layer_id = mgr.add_layer(
+            name="Analysis:ISL", category="Analysis",
+            layer_type="isl", states=states,
+            params={"max_range_km": 3000.0},
+        )
+        layer = mgr.layers[layer_id]
+        assert layer.params.get("max_range_km") == 3000.0
+
+    def test_analysis_api_forwards_params(self, running_server):
+        """POST /api/analysis should forward params to the layer."""
+        port, mgr = running_server
+        # Add source
+        status, body = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 2, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "ParamTest",
+            },
+        })
+        source_id = body["layer_id"]
+
+        # Add coverage with params
+        status, body = _api_request(port, "POST", "/api/analysis", {
+            "type": "coverage",
+            "source_layer": source_id,
+            "params": {"lat_step_deg": 20.0, "lon_step_deg": 20.0},
+        })
+        assert status == 201
+        layer_id = body["layer_id"]
+
+        # Check state includes the params
+        status, state = _api_request(port, "GET", "/api/state")
+        layer_info = [l for l in state["layers"] if l["layer_id"] == layer_id][0]
+        assert layer_info["params"].get("lat_step_deg") == 20.0
+
+
+class TestColorLegendData:
+    """Verify color legend metadata is available in state response."""
+
+    def test_state_includes_legend_for_eclipse(self):
+        """Eclipse analysis layers should include legend color mapping."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states()
+        layer_id = mgr.add_layer(
+            name="Analysis:Eclipse", category="Analysis",
+            layer_type="eclipse", states=states, params={},
+        )
+        state = mgr.get_state()
+        layer_info = [l for l in state["layers"] if l["layer_id"] == layer_id][0]
+        assert "legend" in layer_info, \
+            "Eclipse layer should include legend data in state response"
+
+    def test_legend_has_entries(self):
+        """Legend should have label+color entries."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states()
+        layer_id = mgr.add_layer(
+            name="Analysis:Eclipse", category="Analysis",
+            layer_type="eclipse", states=states, params={},
+        )
+        state = mgr.get_state()
+        layer_info = [l for l in state["layers"] if l["layer_id"] == layer_id][0]
+        legend = layer_info["legend"]
+        assert len(legend) > 0
+        assert "label" in legend[0]
+        assert "color" in legend[0]
+
+
+class TestExportEndpoint:
+    """Verify CZML export endpoint."""
+
+    def test_export_czml_returns_downloadable(self, running_server):
+        """GET /api/export/{layer_id} should return CZML as downloadable JSON."""
+        port, mgr = running_server
+        status, body = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 2, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "Export-Test",
+            },
+        })
+        layer_id = body["layer_id"]
+        status, czml = _api_request(port, "GET", f"/api/export/{layer_id}")
+        assert status == 200
+        assert isinstance(czml, list)
+        assert czml[0]["id"] == "document"
+
+    def test_export_nonexistent_returns_404(self, running_server):
+        """GET /api/export/nonexistent should return 404."""
+        port, mgr = running_server
+        status, body = _api_request(port, "GET", "/api/export/nonexistent")
+        assert status == 404
+
+
+class TestGroundStationSatLimit:
+    """Verify ground station satellite limit is configurable."""
+
+    def test_ground_station_uses_more_than_six_sats(self, running_server):
+        """Ground station should use configurable sat limit, not hardcoded 6."""
+        port, mgr = running_server
+        # Add a large constellation
+        status, body = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 4, "sats_per_plane": 5,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "GS-Test",
+            },
+        })
+        source_id = body["layer_id"]
+        source_layer = mgr.layers[source_id]
+        assert len(source_layer.states) == 20
+
+        # Add ground station — should use more than 6 sats
+        status, body = _api_request(port, "POST", "/api/ground-station", {
+            "name": "Test", "lat": 0.0, "lon": 0.0,
+        })
+        assert status == 201
+        gs_layer = mgr.layers[body["layer_id"]]
+        # The ground station should have access to more than 6 source states
+        assert len(gs_layer.states) > 6, \
+            f"Ground station only got {len(gs_layer.states)} sats, should be >6"
+
+
+class TestSessionSaveLoad:
+    """Verify session save/load endpoints."""
+
+    def test_save_session_returns_data(self, running_server):
+        """POST /api/session/save should return serializable session data."""
+        port, mgr = running_server
+        # Add a constellation
+        _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 2, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "Save-Test",
+            },
+        })
+        status, body = _api_request(port, "POST", "/api/session/save")
+        assert status == 200
+        assert "session" in body
+        assert "layers" in body["session"]
+
+    def test_load_session_restores_layers(self, running_server):
+        """POST /api/session/load should restore previously saved session."""
+        port, mgr = running_server
+        # Add a constellation
+        _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 2, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "Load-Test",
+            },
+        })
+        # Save
+        _, save_resp = _api_request(port, "POST", "/api/session/save")
+        session_data = save_resp["session"]
+
+        # Clear all layers
+        _, state = _api_request(port, "GET", "/api/state")
+        for layer in state["layers"]:
+            _api_request(port, "DELETE", f"/api/layer/{layer['layer_id']}")
+
+        # Verify empty
+        _, state = _api_request(port, "GET", "/api/state")
+        assert len(state["layers"]) == 0
+
+        # Load
+        status, body = _api_request(port, "POST", "/api/session/load", {
+            "session": session_data,
+        })
+        assert status == 200
+
+        # Verify restored
+        _, state = _api_request(port, "GET", "/api/state")
+        assert len(state["layers"]) >= 1
+
+
+class TestAnalysisRecompute:
+    """Verify analysis recomputation with updated params."""
+
+    def test_put_analysis_updates_params_and_regenerates(self, running_server):
+        """PUT /api/analysis/{layer_id} should update params and regenerate CZML."""
+        port, mgr = running_server
+        # Add source
+        status, body = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 2, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "Recomp-Test",
+            },
+        })
+        source_id = body["layer_id"]
+
+        # Add coverage analysis
+        status, body = _api_request(port, "POST", "/api/analysis", {
+            "type": "coverage",
+            "source_layer": source_id,
+            "params": {"lat_step_deg": 10.0, "lon_step_deg": 10.0},
+        })
+        analysis_id = body["layer_id"]
+
+        # Get original CZML
+        _, original_czml = _api_request(port, "GET", f"/api/czml/{analysis_id}")
+
+        # Recompute with different params
+        status, body = _api_request(port, "PUT", f"/api/analysis/{analysis_id}", {
+            "params": {"lat_step_deg": 30.0, "lon_step_deg": 30.0},
+        })
+        assert status == 200
+
+        # CZML should be different
+        _, new_czml = _api_request(port, "GET", f"/api/czml/{analysis_id}")
+        assert new_czml != original_czml, "CZML should change after param update"
+
+
+class TestDurationStepSettings:
+    """Verify global simulation duration/step settings endpoint."""
+
+    def test_state_includes_duration_step(self, running_server):
+        """GET /api/state should include current duration and step settings."""
+        port, mgr = running_server
+        status, state = _api_request(port, "GET", "/api/state")
+        assert "duration_s" in state, "State should include duration_s"
+        assert "step_s" in state, "State should include step_s"
+
+    def test_put_settings_updates_duration(self, running_server):
+        """PUT /api/settings should update duration and step."""
+        port, mgr = running_server
+        status, body = _api_request(port, "PUT", "/api/settings", {
+            "duration_s": 14400,  # 4 hours
+            "step_s": 120,  # 2 minutes
+        })
+        assert status == 200
+
+        # Verify state reflects new settings
+        _, state = _api_request(port, "GET", "/api/state")
+        assert state["duration_s"] == 14400
+        assert state["step_s"] == 120
+
+
 class TestViewerServerPurity:
     """Adapter purity: only stdlib + internal imports allowed."""
 
@@ -785,6 +1167,7 @@ class TestViewerServerPurity:
         allowed_stdlib = {
             "json", "http", "threading", "datetime", "dataclasses",
             "uuid", "urllib", "functools", "math", "numpy", "logging", "typing",
+            "socketserver",
         }
         allowed_internal = {"humeris"}
 

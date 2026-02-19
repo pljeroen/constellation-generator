@@ -514,6 +514,189 @@ class TestGenerateInteractiveHtml:
         assert '<script>alert(1)</script>' not in html
 
 
+class TestInteractiveViewerQol:
+    """QOL improvements for the interactive viewer UI."""
+
+    def test_analysis_section_open_by_default(self):
+        """Add Analysis section should be open (not collapsed) by default."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        # Find the Analysis details element — it should have 'open'
+        # The section contains "Add Analysis" as summary text
+        import re
+        match = re.search(r'<details([^>]*)>\s*<summary>Add Analysis', html)
+        assert match is not None, "Add Analysis section not found"
+        assert "open" in match.group(1), "Add Analysis section should be open by default"
+
+    def test_conjunction_button_present(self):
+        """Conjunction analysis button should be in the analysis grid."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "addAnalysis('conjunction')" in html, "Conjunction button missing"
+
+    def test_analysis_buttons_have_tooltips(self):
+        """All analysis buttons should have title attributes with descriptions."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        import re
+        buttons = re.findall(r'<button[^>]*onclick="addAnalysis\([^)]+\)"[^>]*>', html)
+        assert len(buttons) >= 21, f"Expected >=21 analysis buttons, found {len(buttons)}"
+        for btn in buttons:
+            assert 'title="' in btn, f"Button missing tooltip: {btn}"
+
+    def test_toast_notification_system(self):
+        """Toast notification system should replace alert() calls."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "showToast" in html, "showToast function not found"
+        assert "toast-container" in html or "toastContainer" in html, \
+            "Toast container not found"
+        # No raw alert() calls (except possibly in Cesium library references)
+        import re
+        js_alerts = re.findall(r'(?<!\.)alert\(', html)
+        assert len(js_alerts) == 0, f"Found {len(js_alerts)} raw alert() calls"
+
+    def test_css_spinner_animation(self):
+        """Loading indicator should have a CSS spinner animation."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "@keyframes" in html, "No CSS animation keyframes found"
+        assert "spin" in html.lower(), "No spin animation found"
+
+    def test_panel_toggle_button(self):
+        """Panel toggle button should exist to show/hide side panel."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "togglePanel" in html, "togglePanel function not found"
+
+    def test_expanded_celestrak_groups(self):
+        """CelesTrak dropdown should include additional groups."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        for group in ["ACTIVE", "WEATHER", "GEO", "AMATEUR", "SCIENCE", "NOAA"]:
+            assert f'value="{group}"' in html, \
+                f"CelesTrak group {group} missing from dropdown"
+
+
+class TestInteractiveViewerQolPass2:
+    """QOL Pass 2: Parameter forms, legends, cap display, controls, export, stats."""
+
+    # --- Tier 1: Analysis parameter forms ---
+
+    def test_coverage_param_fields_present(self):
+        """Coverage analysis should have lat_step, lon_step, min_elevation inputs."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert 'id="param-lat-step"' in html, "Missing lat_step parameter field"
+        assert 'id="param-lon-step"' in html, "Missing lon_step parameter field"
+        assert 'id="param-min-elev"' in html, "Missing min_elevation parameter field"
+
+    def test_isl_param_fields_present(self):
+        """ISL analysis should have max_range_km input."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert 'id="param-max-range"' in html, "Missing max_range parameter field"
+
+    def test_drag_param_fields_present(self):
+        """Drag-based analyses should have cd, area, mass inputs."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert 'id="param-cd"' in html, "Missing cd parameter field"
+        assert 'id="param-area"' in html, "Missing area_m2 parameter field"
+        assert 'id="param-mass"' in html, "Missing mass_kg parameter field"
+
+    def test_add_analysis_reads_params(self):
+        """addAnalysis() should read parameter form values into params object."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        # JS should read param fields and pass them
+        assert "param-lat-step" in html
+        assert "param-lon-step" in html
+        # The function should build params from form fields, not send empty {}
+        # Check that addAnalysis assembles a params object from the form
+        assert "gatherAnalysisParams" in html or "buildParams" in html or \
+            'getElementById("param-' in html
+
+    # --- Tier 1: Color legends ---
+
+    def test_color_legend_container_present(self):
+        """Color legend overlay container should exist in HTML."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert 'id="colorLegend"' in html or 'id="legendOverlay"' in html, \
+            "Missing color legend container"
+
+    def test_color_legend_css_present(self):
+        """Color legend should have CSS styling."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "colorLegend" in html or "legendOverlay" in html or \
+            "legend-overlay" in html
+
+    def test_update_legend_function(self):
+        """JS function to update legend when analysis layer selected."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "updateLegend" in html or "showLegend" in html, \
+            "Missing legend update function"
+
+    # --- Tier 1: Cap notice display ---
+
+    def test_cap_notice_in_rebuild_panel(self):
+        """rebuildPanel should display capped_from info when present."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "capped_from" in html, \
+            "rebuildPanel should reference capped_from for cap notice display"
+
+    # --- Tier 2: Global duration/step controls ---
+
+    def test_simulation_duration_input(self):
+        """Simulation section should have duration input."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert 'id="sim-duration"' in html, "Missing simulation duration input"
+
+    def test_simulation_step_input(self):
+        """Simulation section should have step size input."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert 'id="sim-step"' in html, "Missing simulation step input"
+
+    # --- Tier 2: Export from viewer ---
+
+    def test_export_button_in_layer_panel(self):
+        """Each layer in the panel should have an export/download button."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "exportLayer" in html or "downloadLayer" in html, \
+            "Missing export/download function for layers"
+
+    # --- Tier 2: Analysis statistics ---
+
+    def test_statistics_display_area(self):
+        """Layer panel should have a statistics/metrics display area."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "layer-stats" in html or "layerStats" in html or \
+            "statistics" in html.lower(), \
+            "Missing statistics display area in layer panel"
+
+    # --- Tier 3: Session save/load ---
+
+    def test_session_save_button(self):
+        """UI should have a save session button."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "saveSession" in html, "Missing save session button/function"
+
+    def test_session_load_button(self):
+        """UI should have a load session button."""
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        html = generate_interactive_html()
+        assert "loadSession" in html, "Missing load session button/function"
+
+
 class TestCesiumViewerPurity:
     """Adapter purity: only stdlib + internal imports allowed."""
 
