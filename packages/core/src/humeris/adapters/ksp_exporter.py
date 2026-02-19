@@ -184,7 +184,7 @@ class KspExporter(SatelliteExporter):
         hy = pz * vx - px * vz
         hz = px * vy - py * vx
         h_mag = math.sqrt(hx**2 + hy**2 + hz**2)
-        inc_deg = math.degrees(math.acos(hz / h_mag)) if h_mag > 0 else 0.0
+        inc_deg = math.degrees(math.acos(max(-1.0, min(1.0, hz / h_mag)))) if h_mag > 0 else 0.0
 
         if self._scale:
             sma_m = r_earth * _SCALE

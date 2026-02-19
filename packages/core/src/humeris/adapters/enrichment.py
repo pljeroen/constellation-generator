@@ -113,7 +113,7 @@ def compute_satellite_enrichment(
     if _HAS_NRLMSISE00 and epoch is not None:
         try:
             density = _nrlmsise00_density(alt_km, effective_epoch)
-        except (ValueError, Exception):
+        except (ValueError, RuntimeError, KeyError):
             density = 0.0
     if density == 0.0 and _HAS_ATMOSPHERE:
         try:

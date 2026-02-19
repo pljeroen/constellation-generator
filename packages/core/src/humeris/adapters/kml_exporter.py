@@ -9,9 +9,10 @@ External dependencies (xml, file I/O) are confined to this adapter.
 """
 import math
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timezone
 
 from humeris.domain.constellation import Satellite
+from humeris.domain.coordinate_frames import gmst_rad
 from humeris.domain.orbital_mechanics import OrbitalConstants
 from humeris.ports.export import SatelliteExporter
 from humeris.adapters.enrichment import compute_satellite_enrichment
@@ -24,20 +25,32 @@ _R_EARTH = OrbitalConstants.R_EARTH
 
 def _eci_to_geodetic_spherical(
     x: float, y: float, z: float,
+    gmst_angle_rad: float = 0.0,
 ) -> tuple[float, float, float]:
     """
     Convert ECI position to geodetic (lat, lon, alt) using spherical Earth.
 
+    Applies GMST rotation to convert from ECI to ECEF before extracting
+    geographic longitude.
+
     Args:
         x, y, z: ECI position in metres.
+        gmst_angle_rad: Greenwich Mean Sidereal Time in radians.
 
     Returns:
         (lat_deg, lon_deg, alt_m) — latitude/longitude in degrees,
         altitude in metres above mean spherical Earth.
     """
     r = math.sqrt(x * x + y * y + z * z)
+    if r == 0.0:
+        return 0.0, 0.0, -_R_EARTH
     lat_deg = math.degrees(math.asin(z / r))
-    lon_deg = math.degrees(math.atan2(y, x))
+    # Rotate ECI → ECEF by subtracting GMST from the inertial longitude
+    lon_eci_rad = math.atan2(y, x)
+    lon_ecef_rad = lon_eci_rad - gmst_angle_rad
+    lon_deg = math.degrees(lon_ecef_rad)
+    # Normalize to [-180, 180]
+    lon_deg = ((lon_deg + 180.0) % 360.0) - 180.0
     alt_m = r - _R_EARTH
     return lat_deg, lon_deg, alt_m
 
@@ -62,6 +75,7 @@ def _normalize(v: tuple[float, float, float]) -> tuple[float, float, float]:
 def _orbit_path_coords(
     position_eci: tuple[float, float, float],
     velocity_eci: tuple[float, float, float],
+    gmst_angle_rad: float = 0.0,
 ) -> list[str]:
     """
     Compute 37 coordinate strings (36 orbit points + closing point).
@@ -96,7 +110,7 @@ def _orbit_path_coords(
         y = r_mag * (cos_t * e_r[1] + sin_t * e_t[1])
         z = r_mag * (cos_t * e_r[2] + sin_t * e_t[2])
 
-        lat_deg, lon_deg, alt_m = _eci_to_geodetic_spherical(x, y, z)
+        lat_deg, lon_deg, alt_m = _eci_to_geodetic_spherical(x, y, z, gmst_angle_rad)
         coords.append(f"{lon_deg:.6f},{lat_deg:.6f},{alt_m:.1f}")
 
     return coords
@@ -139,6 +153,7 @@ class KmlExporter(SatelliteExporter):
         self,
         sat: Satellite,
         epoch: datetime | None,
+        gmst_angle_rad: float = 0.0,
     ) -> ET.Element:
         """Build a Folder element for one satellite."""
         folder = ET.Element(f"{{{_KML_NS}}}Folder")
@@ -150,7 +165,7 @@ class KmlExporter(SatelliteExporter):
         _sub_element(pm_pos, f"{{{_KML_NS}}}styleUrl", "#sat-style")
 
         px, py, pz = sat.position_eci
-        lat_deg, lon_deg, alt_m = _eci_to_geodetic_spherical(px, py, pz)
+        lat_deg, lon_deg, alt_m = _eci_to_geodetic_spherical(px, py, pz, gmst_angle_rad)
 
         # Enrichment data
         enrich = compute_satellite_enrichment(sat, epoch)
@@ -197,7 +212,7 @@ class KmlExporter(SatelliteExporter):
             _sub_element(pm_orbit, f"{{{_KML_NS}}}name", f"{sat.name} orbit")
             _sub_element(pm_orbit, f"{{{_KML_NS}}}styleUrl", "#sat-style")
 
-            orbit_coords = _orbit_path_coords(sat.position_eci, sat.velocity_eci)
+            orbit_coords = _orbit_path_coords(sat.position_eci, sat.velocity_eci, gmst_angle_rad)
 
             linestring = _sub_element(pm_orbit, f"{{{_KML_NS}}}LineString")
             _sub_element(linestring, f"{{{_KML_NS}}}altitudeMode", "absolute")
@@ -215,9 +230,11 @@ class KmlExporter(SatelliteExporter):
         path: str,
         epoch: datetime | None = None,
     ) -> int:
-        from datetime import timezone
-
         ET.register_namespace("", _KML_NS)
+
+        _j2000 = datetime(2000, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        effective_epoch = epoch or _j2000
+        gmst = gmst_rad(effective_epoch)
 
         kml = ET.Element(f"{{{_KML_NS}}}kml")
         doc = _sub_element(kml, f"{{{_KML_NS}}}Document")
@@ -240,11 +257,11 @@ class KmlExporter(SatelliteExporter):
                 plane_folder = _sub_element(doc, f"{{{_KML_NS}}}Folder")
                 _sub_element(plane_folder, f"{{{_KML_NS}}}name", f"Plane {plane_idx}")
                 for sat in planes[plane_idx]:
-                    sat_folder = self._build_sat_folder(sat, epoch)
+                    sat_folder = self._build_sat_folder(sat, epoch, gmst)
                     plane_folder.append(sat_folder)
         else:
             for sat in satellites:
-                sat_folder = self._build_sat_folder(sat, epoch)
+                sat_folder = self._build_sat_folder(sat, epoch, gmst)
                 doc.append(sat_folder)
 
         # ISL topology layer (optional)
@@ -252,8 +269,6 @@ class KmlExporter(SatelliteExporter):
             from humeris.domain.propagation import derive_orbital_state
             from humeris.domain.inter_satellite_links import compute_isl_topology
 
-            _j2000 = datetime(2000, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-            effective_epoch = epoch or _j2000
             states = [derive_orbital_state(s, effective_epoch) for s in satellites]
             topology = compute_isl_topology(
                 states, effective_epoch, max_range_km=self._max_isl_range_km,
@@ -275,8 +290,8 @@ class KmlExporter(SatelliteExporter):
                     continue
                 sat_a = satellites[link.sat_idx_a]
                 sat_b = satellites[link.sat_idx_b]
-                a_lat, a_lon, a_alt = _eci_to_geodetic_spherical(*sat_a.position_eci)
-                b_lat, b_lon, b_alt = _eci_to_geodetic_spherical(*sat_b.position_eci)
+                a_lat, a_lon, a_alt = _eci_to_geodetic_spherical(*sat_a.position_eci, gmst)
+                b_lat, b_lon, b_alt = _eci_to_geodetic_spherical(*sat_b.position_eci, gmst)
 
                 pm_isl = _sub_element(isl_folder, f"{{{_KML_NS}}}Placemark")
                 _sub_element(pm_isl, f"{{{_KML_NS}}}name",

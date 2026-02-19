@@ -92,7 +92,7 @@ class ConcurrentCelesTrakAdapter(OrbitalDataSource):
             records = self.fetch_group(group)
         elif name:
             records = self.fetch_by_name(name)
-        elif catnr:
+        elif catnr is not None:
             records = self.fetch_by_catnr(catnr)
         else:
             raise ValueError("Specify one of: group, name, or catnr")
@@ -138,7 +138,11 @@ class ConcurrentCelesTrakAdapter(OrbitalDataSource):
                 text = response.read().decode("utf-8")
                 if text.strip() == "No GP data found":
                     return []
-                return json.loads(text)
+                data = json.loads(text)
+                if not isinstance(data, list):
+                    _log.warning("CelesTrak returned non-list JSON: %s", type(data).__name__)
+                    return []
+                return data
         except urllib.error.HTTPError as e:
             raise ConnectionError(
                 f"CelesTrak API error {e.code}: {e.reason}"

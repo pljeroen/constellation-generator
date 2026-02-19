@@ -592,3 +592,21 @@ class TestCzmlExporterPurity:
                     top = node.module.split(".")[0]
                     assert top in allowed_stdlib or top in allowed_internal, \
                         f"Forbidden import from: {node.module}"
+
+
+class TestIsoUtcEnforcement:
+    """_iso() must produce correct Z-suffixed UTC timestamps."""
+
+    def test_utc_datetime_unchanged(self):
+        from humeris.adapters.czml_exporter import _iso
+        from datetime import datetime, timezone
+        dt = datetime(2026, 3, 20, 12, 0, 0, tzinfo=timezone.utc)
+        assert _iso(dt) == "2026-03-20T12:00:00Z"
+
+    def test_non_utc_datetime_converted(self):
+        from humeris.adapters.czml_exporter import _iso
+        from datetime import datetime, timezone, timedelta
+        # UTC+2 at 14:00 = UTC 12:00
+        tz_plus2 = timezone(timedelta(hours=2))
+        dt = datetime(2026, 3, 20, 14, 0, 0, tzinfo=tz_plus2)
+        assert _iso(dt) == "2026-03-20T12:00:00Z"

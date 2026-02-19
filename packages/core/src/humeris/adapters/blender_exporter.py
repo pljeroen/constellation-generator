@@ -189,7 +189,8 @@ class BlenderExporter(SatelliteExporter):
                 f"subdivisions=1)"
             )
             lines.append("sat = bpy.context.active_object")
-            lines.append(f'sat.name = "{sat.name}"')
+            safe_name = sat.name.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+            lines.append(f'sat.name = "{safe_name}"')
 
             # Assign plane material
             if self._color_by_plane:
@@ -208,9 +209,10 @@ class BlenderExporter(SatelliteExporter):
             # Orbit curve (optional)
             if self._include_orbits:
                 orbit_pts = _orbit_points_km(sat.position_eci, sat.velocity_eci)
-                curve_var = f"orbit_{sat.name}"
+                safe_curve = sat.name.replace("'", "").replace("\\", "").replace("\n", "")
+                curve_var = f"orbit_{safe_curve}"
 
-                lines.append(f"# Create orbit curve for: {sat.name}")
+                lines.append(f"# Create orbit curve for: {safe_name}")
                 lines.append(
                     f"curve_data = bpy.data.curves.new('{curve_var}', 'CURVE')"
                 )

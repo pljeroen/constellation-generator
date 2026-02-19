@@ -377,3 +377,26 @@ class TestReturnCount:
         path = str(tmp_path / "empty.sfs")
         count = KspExporter().export([], path, epoch=EPOCH)
         assert count == 0
+
+
+class TestAcosClamping:
+    """math.acos argument must be clamped to [-1, 1]."""
+
+    def test_near_polar_orbit_no_domain_error(self, tmp_path):
+        """Satellite with hz/h_mag ≈ 1.0 should not raise ValueError."""
+        from humeris.domain.constellation import Satellite
+        from humeris.adapters.ksp_exporter import KspExporter
+        from humeris.domain.orbital_mechanics import OrbitalConstants
+
+        r = OrbitalConstants.R_EARTH + 550_000.0
+        sat = Satellite(
+            name="NearPolar",
+            plane_index=0,
+            sat_index=0,
+            position_eci=(r, 0.0, 0.0),
+            velocity_eci=(0.0, 7600.0, 1e-10),
+            raan_deg=0.0,
+            true_anomaly_deg=0.0,
+        )
+        path = str(tmp_path / "polar.sfs")
+        KspExporter().export([sat], path, epoch=EPOCH)

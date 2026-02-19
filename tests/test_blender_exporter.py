@@ -253,3 +253,54 @@ class TestReturnCount:
             assert "primitive_ico_sphere_add" not in content
         finally:
             os.unlink(path)
+
+
+class TestNameSanitization:
+    """Satellite names with special characters must not break generated Python."""
+
+    def test_quotes_in_name_escaped(self, tmp_path):
+        from humeris.domain.constellation import Satellite
+
+        r = OrbitalConstants.R_EARTH + 550_000.0
+        sat = Satellite(
+            name='Test "Quoted" Sat',
+            plane_index=0,
+            sat_index=0,
+            position_eci=(r, 0.0, 0.0),
+            velocity_eci=(0.0, 7600.0, 0.0),
+            raan_deg=0.0,
+            true_anomaly_deg=0.0,
+        )
+        path = str(tmp_path / "test.py")
+        BlenderExporter().export([sat], path, epoch=EPOCH)
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        # The generated Python should be syntactically valid
+        # Quotes should be escaped in sat.name assignment
+        assert '\\"Quoted\\"' in content or "Quoted" in content
+        # Must not have unescaped quotes that break the string
+        for line in content.split("\n"):
+            if "sat.name" in line:
+                assert line.count('"') % 2 == 0, f"Unbalanced quotes: {line}"
+
+    def test_newline_in_name_stripped(self, tmp_path):
+        from humeris.domain.constellation import Satellite
+
+        r = OrbitalConstants.R_EARTH + 550_000.0
+        sat = Satellite(
+            name="Line1\nLine2",
+            plane_index=0,
+            sat_index=0,
+            position_eci=(r, 0.0, 0.0),
+            velocity_eci=(0.0, 7600.0, 0.0),
+            raan_deg=0.0,
+            true_anomaly_deg=0.0,
+        )
+        path = str(tmp_path / "test.py")
+        BlenderExporter().export([sat], path, epoch=EPOCH)
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        # Newlines in names should be replaced, not break the script
+        for line in content.split("\n"):
+            if "sat.name" in line:
+                assert "\n" not in line.split("sat.name")[1].strip()

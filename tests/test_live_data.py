@@ -144,3 +144,42 @@ class TestCelesTrakAdapter:
         for sat in satellites[:3]:
             r = math.sqrt(sum(p**2 for p in sat.position_eci))
             assert r > 6_000_000
+
+
+# ── _fetch_json validation ─────────────────────────────────────────
+
+class TestFetchJsonValidation:
+    """_fetch_json must handle non-list responses from CelesTrak."""
+
+    def test_dict_response_returns_empty_list(self):
+        """CelesTrak error JSON returns dict, not list — must not iterate keys."""
+        from unittest.mock import patch, MagicMock
+        from humeris.adapters.celestrak import CelesTrakAdapter
+
+        # Simulate CelesTrak returning an error JSON dict
+        mock_response = MagicMock()
+        mock_response.read.return_value = b'{"error": "rate limited"}'
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        adapter = CelesTrakAdapter()
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            result = adapter._fetch_json("https://example.com")
+
+        assert isinstance(result, list)
+        assert len(result) == 0
+
+    def test_catnr_zero_not_skipped(self):
+        """catnr=0 must not be treated as falsy."""
+        from humeris.adapters.celestrak import CelesTrakAdapter
+
+        adapter = CelesTrakAdapter()
+        # catnr=0 should be accepted, not fall through to ValueError
+        # Currently: `elif catnr:` is falsy for 0
+        try:
+            adapter.fetch_satellites(catnr=0)
+        except (ConnectionError, ValueError) as e:
+            # ConnectionError = tried to fetch (good, catnr was used)
+            # ValueError("Specify one of...") = catnr was ignored (bad)
+            assert "Specify one of" not in str(e), \
+                "catnr=0 was ignored due to truthiness check"

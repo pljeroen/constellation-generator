@@ -12,7 +12,7 @@ Uses only stdlib json/math/datetime + domain imports.
 
 import json
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from humeris.domain.propagation import OrbitalState, propagate_to
 from humeris.domain.orbital_mechanics import OrbitalConstants
@@ -121,6 +121,8 @@ def _satellite_description(state: OrbitalState, epoch: datetime) -> str:
 
 
 def _iso(dt: datetime) -> str:
+    if dt.tzinfo is not None and dt.tzinfo.utcoffset(dt) is not None:
+        dt = dt.astimezone(timezone.utc)
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 

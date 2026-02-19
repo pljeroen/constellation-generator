@@ -518,6 +518,90 @@ class TestHazardEvolutionPackets:
             assert "interval" in color[0]
 
 
+class TestFragilityColorDirection:
+    """High fragility must map to red (bad), not green."""
+
+    def test_high_fragility_is_red_not_green(self):
+        """_health_color(1.0) = green, _health_color(0.0) = red.
+
+        High fragility should be RED (dangerous), not green.
+        The fragility code should pass (1 - frag_val), not frag_val directly.
+        """
+        from humeris.adapters.czml_visualization import _health_color
+
+        # Direct unit test: the fragility code does
+        #   frag_val = min(1.0, fragility.composite_fragility * 1000.0)
+        #   frag_color = _health_color(frag_val)
+        # For high fragility (composite=0.9): frag_val = 0.9 (clipped to 1.0)
+        # BUG: _health_color(1.0) = [0, 255, 0, 200] (GREEN = healthy)
+        # FIX: should use _health_color(1.0 - frag_val) → _health_color(0.0) = [255, 0, 0, 200] (RED)
+
+        # Verify _health_color direction (these are correct by definition):
+        assert _health_color(1.0) == [0, 255, 0, 200], "1.0 → green (healthy)"
+        assert _health_color(0.0) == [255, 0, 0, 200], "0.0 → red (unhealthy)"
+
+        # The actual test: for a high-fragility constellation, the packets
+        # should use RED coloring. We mock the fragility computation.
+        from unittest.mock import patch
+        import humeris.domain.design_sensitivity as ds_mod
+
+        mock_result = type('obj', (object,), {'composite_fragility': 0.9})()
+        states, _ = _make_states_and_sats()
+        n_rad_s = states[0].mean_motion_rad_s
+
+        with patch.object(ds_mod, 'compute_spectral_fragility', return_value=mock_result):
+            pkts = fragility_constellation_packets(
+                states, EPOCH, _LINK_CONFIG, n_rad_s,
+                control_duration_s=5400.0, duration_s=3600.0, step_s=60.0,
+            )
+        rgba = pkts[1]["point"]["color"]["rgba"]
+        # High fragility (0.9) → frag_val=1.0 after *1000+clip
+        # Correct: RED (rgba[0] > rgba[1])
+        assert rgba[0] > rgba[1], (
+            f"High fragility got color {rgba} — green > red means fragility is inverted"
+        )
+
+
+class TestHazardSurvivalCurveUsage:
+    """hazard_evolution_packets must use actual survival_fraction data."""
+
+    def test_survival_curve_data_affects_colors(self, orbital_states):
+        """With a sharp survival drop at day 1, colors should differ from linear."""
+        from humeris.domain.statistical_analysis import LifetimeSurvivalCurve
+
+        # Survival curve with sharp drop: 100% at day 0, 10% at day 1, 5% at day 2
+        t0 = EPOCH
+        t1 = EPOCH + timedelta(days=1)
+        t2 = EPOCH + timedelta(days=2)
+        curve = LifetimeSurvivalCurve(
+            times=(t0, t1, t2),
+            altitudes_km=(550.0, 540.0, 530.0),
+            survival_fraction=(1.0, 0.1, 0.05),
+            hazard_rate_per_day=(0.0, 2.3, 0.7),
+            half_life_altitude_km=400.0,
+            mean_remaining_life_days=365.0,
+        )
+        # Duration = 2 days, step = 1 day → 3 time steps (0h, 24h, 48h)
+        pkts = hazard_evolution_packets(
+            orbital_states, curve, EPOCH,
+            duration_s=2 * 86400.0, step_s=86400.0,
+        )
+        # Check first satellite's color intervals
+        sat_pkt = pkts[1]
+        color_intervals = sat_pkt["point"]["color"]
+        assert len(color_intervals) >= 2, "Should have multiple color intervals"
+
+        # At day 1 (index 1), survival is 0.1 → should be very red
+        # Linear model: fraction = 1 - 1/365 ≈ 0.997 → very green
+        # If colors match the actual curve, day-1 color should be red-ish
+        day1_color = color_intervals[1]["rgba"]
+        # Red channel (index 0) should be high for 0.1 survival
+        assert day1_color[0] >= 200, (
+            f"At day 1 (survival=0.1), color {day1_color} should be red, "
+            "but survival curve data appears to be ignored"
+        )
+
+
 class TestCoverageConnectivityPackets:
     """Coverage-connectivity product grid."""
 

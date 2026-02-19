@@ -148,6 +148,10 @@ def _propagate_geodetic(
         gmst,
     )
     lat_deg, lon_deg, alt_m = ecef_to_geodetic(pos_ecef)
+    # Guard against NaN/Inf from degenerate propagation
+    import math
+    if not (math.isfinite(lat_deg) and math.isfinite(lon_deg) and math.isfinite(alt_m)):
+        lat_deg, lon_deg, alt_m = 0.0, 0.0, 0.0
     return pos_eci, vel_eci, lat_deg, lon_deg, alt_m
 
 
@@ -880,7 +884,7 @@ def fragility_constellation_packets(
 ) -> list[dict]:
     """Constellation colored by spectral fragility.
 
-    Green (high fragility/healthy) -> yellow -> red (fragile).
+    Green (low fragility/healthy) -> yellow -> red (high fragility/fragile).
     Coarse time step for performance.
 
     Args:
@@ -915,9 +919,9 @@ def fragility_constellation_packets(
     fragility = compute_spectral_fragility(
         states, epoch, link_config, n_rad_s, control_duration_s, lat_deg, lon_deg,
     )
-    # Map composite to color (higher = healthier = greener)
+    # Map composite to color (higher fragility = less healthy = redder)
     frag_val = min(1.0, fragility.composite_fragility * 1000.0)
-    frag_color = _health_color(frag_val)
+    frag_color = _health_color(1.0 - frag_val)
 
     for idx, state in enumerate(states):
         coords: list[float] = []
@@ -983,6 +987,8 @@ def hazard_evolution_packets(
     # Build interval colors from survival curve
     surv_fracs = list(survival_curve.survival_fraction) if survival_curve.survival_fraction else [1.0]
     surv_times = list(survival_curve.times) if survival_curve.times else [epoch]
+    # Pre-compute elapsed days for each survival curve time point
+    surv_elapsed_days = [(t - epoch).total_seconds() / 86400.0 for t in surv_times]
 
     for idx, state in enumerate(states):
         coords: list[float] = []
@@ -996,14 +1002,27 @@ def hazard_evolution_packets(
             coords.extend([t_offset, lon_deg, lat_deg, alt_m])
             step_times.append(target_time)
 
-            # Find survival fraction at this time
+            # Interpolate survival fraction from actual curve data
+            elapsed_days = t_offset / 86400.0
             fraction = 1.0
-            if surv_times and surv_fracs:
-                elapsed_days = t_offset / 86400.0
-                total_days = survival_curve.mean_remaining_life_days
-                if total_days > 0:
-                    fraction = max(0.0, 1.0 - elapsed_days / total_days)
-            health_vals.append(fraction)
+            if len(surv_elapsed_days) >= 2:
+                if elapsed_days <= surv_elapsed_days[0]:
+                    fraction = surv_fracs[0]
+                elif elapsed_days >= surv_elapsed_days[-1]:
+                    fraction = surv_fracs[-1]
+                else:
+                    for j in range(len(surv_elapsed_days) - 1):
+                        if surv_elapsed_days[j] <= elapsed_days <= surv_elapsed_days[j + 1]:
+                            span = surv_elapsed_days[j + 1] - surv_elapsed_days[j]
+                            if span > 0:
+                                t_frac = (elapsed_days - surv_elapsed_days[j]) / span
+                                fraction = surv_fracs[j] + t_frac * (surv_fracs[j + 1] - surv_fracs[j])
+                            else:
+                                fraction = surv_fracs[j]
+                            break
+            elif surv_fracs:
+                fraction = surv_fracs[0]
+            health_vals.append(max(0.0, min(1.0, fraction)))
 
         # Build interval-based color
         end_time = epoch + duration

@@ -384,7 +384,7 @@ def main():
         parser.error("the following arguments are required: --output/-o")
 
     try:
-        live_mode = args.live_group or args.live_name or args.live_catnr
+        live_mode = args.live_group or args.live_name or args.live_catnr is not None
         if live_mode:
             count, satellites = run_live(
                 input_path=args.input,

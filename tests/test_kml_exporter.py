@@ -327,3 +327,107 @@ class TestReturnCount:
         exporter = KmlExporter()
         count = exporter.export([], kml_path)
         assert count == 0
+
+
+class TestEciToEcefRotation:
+    """KML longitude must account for GMST rotation (ECI→ECEF)."""
+
+    def test_longitude_offset_by_gmst(self, kml_path):
+        """Satellite on ECI X-axis should NOT have lon≈0° in geodetic output.
+
+        A satellite at ECI (r, 0, 0) has right ascension = 0°.
+        Geographic longitude = 0° - GMST(epoch).
+        The bug: current code outputs lon≈0° because it skips ECI→ECEF rotation.
+        """
+        from humeris.domain.constellation import Satellite
+        from humeris.domain.coordinate_frames import gmst_rad
+
+        r = OrbitalConstants.R_EARTH + 550_000.0
+        # Satellite on ECI X-axis: RA=0
+        sat = Satellite(
+            name="X-Axis",
+            plane_index=0,
+            sat_index=0,
+            position_eci=(r, 0.0, 0.0),
+            velocity_eci=(0.0, 7600.0, 0.0),
+            raan_deg=0.0,
+            true_anomaly_deg=0.0,
+        )
+        # Use J2000 epoch where GMST ≈ 280.46° — gives ~79.5° offset
+        epoch = datetime(2000, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        exporter = KmlExporter(name="GMST-Test", include_orbits=False)
+        exporter.export([sat], kml_path, epoch=epoch)
+
+        tree = ET.parse(kml_path)
+        root = tree.getroot()
+        doc = root.find(_ns("Document"))
+        folder = doc.find(_ns("Folder"))
+        pm = folder.find(_ns("Placemark"))
+        point = pm.find(_ns("Point"))
+        coords = point.find(_ns("coordinates")).text.strip()
+        lon_deg = float(coords.split(",")[0])
+
+        # Expected: lon = -GMST(epoch) mod 360, normalized to [-180, 180]
+        gmst = math.degrees(gmst_rad(epoch))
+        expected_lon = (-gmst) % 360.0
+        if expected_lon > 180.0:
+            expected_lon -= 360.0
+
+        # GMST at J2000 ≈ 280.46° → expected lon ≈ 79.5°
+        # Bug produces lon ≈ 0° (raw ECI). Tolerance: 1°.
+        assert abs(lon_deg - expected_lon) < 1.0, (
+            f"Longitude {lon_deg:.2f}° looks like ECI right ascension, "
+            f"expected ECEF longitude ≈ {expected_lon:.2f}°"
+        )
+
+    def test_orbit_path_longitude_rotated(self, kml_path):
+        """Orbit path coordinates must also include GMST rotation."""
+        from humeris.domain.constellation import Satellite
+        from humeris.domain.coordinate_frames import gmst_rad
+
+        r = OrbitalConstants.R_EARTH + 550_000.0
+        # Equatorial orbit — all points should have lat≈0, lon varies
+        sat = Satellite(
+            name="Equatorial",
+            plane_index=0,
+            sat_index=0,
+            position_eci=(r, 0.0, 0.0),
+            velocity_eci=(0.0, 7600.0, 0.0),
+            raan_deg=0.0,
+            true_anomaly_deg=0.0,
+        )
+        # Use J2000 epoch where GMST ≈ 280.46°
+        epoch = datetime(2000, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        exporter = KmlExporter(name="GMST-Orbit", include_orbits=True)
+        exporter.export([sat], kml_path, epoch=epoch)
+
+        tree = ET.parse(kml_path)
+        root = tree.getroot()
+        doc = root.find(_ns("Document"))
+        folder = doc.find(_ns("Folder"))
+        placemarks = folder.findall(_ns("Placemark"))
+        orbit_pm = placemarks[1]  # second placemark is the orbit
+        linestring = orbit_pm.find(_ns("LineString"))
+        coords_text = linestring.find(_ns("coordinates")).text.strip()
+
+        # First point (angle=0) is at ECI X-axis → should have GMST offset
+        first_tuple = coords_text.split()[0]
+        first_lon = float(first_tuple.split(",")[0])
+
+        gmst = math.degrees(gmst_rad(epoch))
+        expected_lon = (-gmst) % 360.0
+        if expected_lon > 180.0:
+            expected_lon -= 360.0
+
+        assert abs(first_lon - expected_lon) < 1.0, (
+            f"Orbit path lon {first_lon:.2f}° not rotated by GMST, "
+            f"expected ≈ {expected_lon:.2f}°"
+        )
+
+    def test_zero_position_vector_returns_gracefully(self):
+        """Zero position vector should not cause ZeroDivisionError."""
+        from humeris.adapters.kml_exporter import _eci_to_geodetic_spherical
+
+        lat, lon, alt = _eci_to_geodetic_spherical(0.0, 0.0, 0.0)
+        assert lat == 0.0
+        assert lon == 0.0

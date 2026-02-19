@@ -321,3 +321,32 @@ class TestReturnCount:
         path = str(tmp_path / "empty.ssc")
         count = CelestiaExporter().export([], path, epoch=EPOCH)
         assert count == 0
+
+
+class TestAcosClamping:
+    """math.acos argument must be clamped to [-1, 1]."""
+
+    def test_near_polar_orbit_no_domain_error(self, tmp_path):
+        """Satellite with hz/h_mag ≈ 1.0 should not raise ValueError."""
+        from humeris.domain.constellation import Satellite
+        from humeris.adapters.celestia_exporter import CelestiaExporter
+        from humeris.domain.orbital_mechanics import OrbitalConstants
+
+        r = OrbitalConstants.R_EARTH + 550_000.0
+        # Pure polar orbit: velocity purely in Z direction
+        # h = r × v = (r,0,0) × (0,0,vz) = (0, -r*vz, 0)
+        # → hz=0, so hz/h_mag = 0. That's fine.
+        # Instead: make h nearly parallel to z-axis
+        # h = (0, 0, r*v) → hz/h_mag = 1.0 exactly
+        sat = Satellite(
+            name="NearPolar",
+            plane_index=0,
+            sat_index=0,
+            position_eci=(r, 0.0, 0.0),
+            velocity_eci=(0.0, 7600.0, 1e-10),  # tiny z component
+            raan_deg=0.0,
+            true_anomaly_deg=0.0,
+        )
+        path = str(tmp_path / "polar.ssc")
+        # This must not raise ValueError from math.acos domain error
+        CelestiaExporter().export([sat], path, epoch=EPOCH)

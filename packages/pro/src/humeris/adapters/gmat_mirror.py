@@ -48,6 +48,7 @@ def _capture_git(repo: Path, args: list[str]) -> tuple[int, str]:
         text=True,
         capture_output=True,
         check=False,
+        timeout=30,
     )
     return proc.returncode, proc.stdout.strip()
 

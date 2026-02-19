@@ -81,7 +81,7 @@ class SpaceEngineExporter(SatelliteExporter):
         hy = pz * vx - px * vz
         hz = px * vy - py * vx
         h_mag = math.sqrt(hx**2 + hy**2 + hz**2)
-        inc_deg = math.degrees(math.acos(hz / h_mag)) if h_mag > 0 else 0.0
+        inc_deg = math.degrees(math.acos(max(-1.0, min(1.0, hz / h_mag)))) if h_mag > 0 else 0.0
 
         # RAAN and true anomaly from metadata
         raan_deg = sat.raan_deg % 360.0
