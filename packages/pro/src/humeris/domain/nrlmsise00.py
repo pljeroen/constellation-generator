@@ -495,22 +495,24 @@ class NRLMSISE00Model:
         # F10.7 scaling of 120 km reference densities
         f107_ratio = f107a / 150.0
 
+        f107_ratio = max(0.01, f107_ratio)
         n120_n2 = _N120_N2 * f107_ratio ** _GAMMA_N2
         n120_o2 = _N120_O2 * f107_ratio ** _GAMMA_O2
         n120_o = _N120_O * f107_ratio ** _GAMMA_O
-        n120_he = _N120_HE * max(0.01, f107_ratio) ** _GAMMA_HE
+        n120_he = _N120_HE * f107_ratio ** _GAMMA_HE
         n120_ar = _N120_AR * f107_ratio ** _GAMMA_AR
-        n120_h = _N120_H * max(0.01, f107_ratio) ** _GAMMA_H
+        n120_h = _N120_H * f107_ratio ** _GAMMA_H
         n120_n = _N120_N * f107_ratio ** _GAMMA_N
 
         # Also apply daily F10.7 correction (smaller effect)
         f107_daily_ratio = f107 / 150.0
+        f107_daily_ratio = max(0.01, f107_daily_ratio)
         daily_corr_n2 = f107_daily_ratio ** (_GAMMA_N2 * 0.3)
         daily_corr_o2 = f107_daily_ratio ** (_GAMMA_O2 * 0.3)
         daily_corr_o = f107_daily_ratio ** (_GAMMA_O * 0.3)
-        daily_corr_he = max(0.01, f107_daily_ratio) ** (_GAMMA_HE * 0.3)
+        daily_corr_he = f107_daily_ratio ** (_GAMMA_HE * 0.3)
         daily_corr_ar = f107_daily_ratio ** (_GAMMA_AR * 0.3)
-        daily_corr_h = max(0.01, f107_daily_ratio) ** (_GAMMA_H * 0.3)
+        daily_corr_h = f107_daily_ratio ** (_GAMMA_H * 0.3)
         daily_corr_n = f107_daily_ratio ** (_GAMMA_N * 0.3)
 
         n120_n2 *= daily_corr_n2

@@ -699,3 +699,34 @@ class TestDomainPurity:
                     assert any(
                         node.module.startswith(p) for p in allowed_prefixes
                     ), f"Forbidden import from: {node.module}"
+
+
+class TestNrlmsise00ZeroF107:
+    """NRLMSISE-00 must not crash or produce NaN with f107a=0."""
+
+    def test_zero_f107a_no_nan(self):
+        """All species must clamp f107_ratio, not raise on 0**fractional."""
+        from humeris.domain.nrlmsise00 import NRLMSISE00Model, SpaceWeather
+        import math
+        model = NRLMSISE00Model()
+        sw = SpaceWeather(f107_daily=0.0, f107_average=0.0, ap_daily=4.0)
+        result = model.evaluate(
+            400.0, 0.0, 0.0, 2026, 79, 43200.0, space_weather=sw,
+        )
+        assert math.isfinite(result.total_density_kg_m3), (
+            f"Got non-finite density: {result.total_density_kg_m3}"
+        )
+        assert result.total_density_kg_m3 >= 0.0
+
+    def test_negative_f107a_no_nan(self):
+        """Negative f107a (corrupt data) must not produce NaN."""
+        from humeris.domain.nrlmsise00 import NRLMSISE00Model, SpaceWeather
+        import math
+        model = NRLMSISE00Model()
+        sw = SpaceWeather(f107_daily=-50.0, f107_average=-50.0, ap_daily=4.0)
+        result = model.evaluate(
+            400.0, 0.0, 0.0, 2026, 79, 43200.0, space_weather=sw,
+        )
+        assert math.isfinite(result.total_density_kg_m3), (
+            f"Got non-finite density: {result.total_density_kg_m3}"
+        )

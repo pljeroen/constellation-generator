@@ -54,7 +54,7 @@ class ConcurrentCelesTrakAdapter(OrbitalDataSource):
         self._sgp4 = SGP4Adapter()
 
     def fetch_group(self, group_name: str) -> list[dict[str, Any]]:
-        url = f"{self._base_url}?GROUP={group_name}&FORMAT=JSON"
+        url = f"{self._base_url}?GROUP={quote(group_name)}&FORMAT=JSON"
         return self._fetch_json(url)
 
     def fetch_by_name(self, name: str) -> list[dict[str, Any]]:

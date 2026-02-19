@@ -251,3 +251,62 @@ class TestReturnCount:
 
     def test_port_compliance(self):
         assert issubclass(StellariumExporter, SatelliteExporter)
+
+
+class TestTleEdgeCases:
+    """TLE format edge cases and hardening."""
+
+    def test_epoch_microseconds_preserved(self):
+        """TLE epoch must include sub-second precision."""
+        from humeris.adapters.stellarium_exporter import _epoch_components
+        # Epoch with 500000 microseconds (0.5 seconds)
+        epoch = datetime(2026, 3, 20, 12, 30, 30, 500000, tzinfo=timezone.utc)
+        year, day_frac = _epoch_components(epoch)
+        # day 79, 12:30:30.5 = 79 + (12*3600 + 30*60 + 30.5) / 86400
+        expected_frac = (12 * 3600 + 30 * 60 + 30.5) / 86400.0
+        # The fractional part should reflect sub-second
+        actual_frac = day_frac - int(day_frac)
+        assert abs(actual_frac - expected_frac) < 1e-8, (
+            f"Microseconds lost: expected frac={expected_frac}, got {actual_frac}"
+        )
+
+    def test_mean_motion_zero_position_does_not_crash(self):
+        """_mean_motion at (0,0,0) must not crash with ZeroDivisionError."""
+        from humeris.adapters.stellarium_exporter import _mean_motion
+        # Should return 0.0 or raise ValueError, not ZeroDivisionError
+        try:
+            result = _mean_motion((0.0, 0.0, 0.0))
+            assert result == 0.0
+        except ValueError:
+            pass  # Also acceptable
+
+    def test_tle_catalog_overflow_rejected(self):
+        """Generating >999 satellites must not produce malformed TLE lines."""
+        # Create 1000 sats — catalog numbers would overflow 5 digits
+        shell = ShellConfig(
+            altitude_km=550, inclination_deg=53,
+            num_planes=10, sats_per_plane=100,
+            phase_factor=1, raan_offset_deg=0, shell_name="Overflow",
+        )
+        sats = generate_walker_shell(shell)
+        assert len(sats) == 1000
+        exporter = StellariumExporter()
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(suffix=".tle", delete=False) as f:
+            path = f.name
+        try:
+            # Should either succeed with valid TLE or raise ValueError
+            exporter.export(sats, path, epoch=EPOCH)
+            with open(path) as f:
+                lines = f.readlines()
+            # Every TLE line must be exactly 69 chars (+ newline)
+            for i, line in enumerate(lines):
+                stripped = line.rstrip("\n")
+                if stripped and stripped[0] in ("1", "2"):
+                    assert len(stripped) == 69, (
+                        f"TLE line {i} has {len(stripped)} chars, expected 69: {stripped!r}"
+                    )
+        except ValueError:
+            pass  # Acceptable: reject overflow
+        finally:
+            os.unlink(path)

@@ -45,6 +45,7 @@ def _epoch_components(epoch: datetime) -> tuple[int, float]:
         epoch.hour / 24.0
         + epoch.minute / 1440.0
         + epoch.second / 86400.0
+        + epoch.microsecond / 86400e6
     )
     return epoch_year, day_of_year + fractional_day
 
@@ -60,6 +61,8 @@ def _mean_motion(position_eci: tuple[float, float, float]) -> float:
         + position_eci[1] ** 2
         + position_eci[2] ** 2
     )
+    if r == 0.0:
+        return 0.0
     period = 2.0 * math.pi * math.sqrt(r**3 / OrbitalConstants.MU_EARTH)
     return 86400.0 / period
 
@@ -92,6 +95,10 @@ def _format_line1(
 
     Fixed-width columns per TLE specification.
     """
+    if catalog_num > 99999:
+        raise ValueError(
+            f"Catalog number {catalog_num} exceeds TLE 5-digit limit (99999)"
+        )
     launch_num = catalog_num - 99000
 
     line = (

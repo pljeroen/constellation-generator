@@ -211,3 +211,30 @@ class TestLifetimePurity:
                     root = node.module.split('.')[0]
                     if root not in allowed and root != 'humeris':
                         assert False, f"Disallowed import from '{node.module}'"
+
+
+class TestLifetimeSmaClamp:
+    """Lifetime decay must not produce negative semi-major axis."""
+
+    def test_extreme_decay_no_negative_sma(self):
+        """High-drag low-altitude orbit must clamp SMA to R_EARTH minimum."""
+        from humeris.domain.lifetime import compute_orbit_lifetime
+        from humeris.domain.atmosphere import DragConfig
+        from humeris.domain.orbital_mechanics import OrbitalConstants
+        from datetime import datetime, timezone
+        import math
+        config = DragConfig(cd=2.2, area_m2=100.0, mass_kg=1.0)  # extreme drag
+        epoch = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        result = compute_orbit_lifetime(
+            semi_major_axis_m=OrbitalConstants.R_EARTH + 150_000.0,  # 150 km (very low)
+            eccentricity=0.0,
+            drag_config=config,
+            epoch=epoch,
+            max_years=1.0,
+            step_days=1.0,
+        )
+        # Every decay point must have SMA >= R_EARTH
+        for point in result.decay_profile:
+            assert point.semi_major_axis_m >= OrbitalConstants.R_EARTH, (
+                f"Negative altitude at t={point.time}: SMA={point.semi_major_axis_m}"
+            )

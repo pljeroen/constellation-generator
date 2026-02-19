@@ -816,3 +816,34 @@ class TestDomainPurity:
                     top = node.module.split(".")[0]
                     assert top in allowed_top or node.module.startswith(allowed_internal_prefix), \
                         f"Forbidden import from: {node.module}"
+
+
+class TestForceModelZeroPositionGuards:
+    """Force models must not crash on degenerate (0,0,0) position."""
+
+    EPOCH = datetime(2026, 3, 20, 12, 0, 0, tzinfo=timezone.utc)
+    ZERO_POS = (0.0, 0.0, 0.0)
+    ZERO_VEL = (0.0, 0.0, 0.0)
+
+    def test_two_body_zero_position_returns_zero(self):
+        """TwoBodyGravity at origin must return (0,0,0), not crash."""
+        force = TwoBodyGravity()
+        ax, ay, az = force.acceleration(self.EPOCH, self.ZERO_POS, self.ZERO_VEL)
+        assert math.isfinite(ax) and math.isfinite(ay) and math.isfinite(az)
+
+    def test_j2_zero_position_returns_zero(self):
+        """J2Perturbation at origin must return (0,0,0), not crash."""
+        force = J2Perturbation()
+        ax, ay, az = force.acceleration(self.EPOCH, self.ZERO_POS, self.ZERO_VEL)
+        assert math.isfinite(ax) and math.isfinite(ay) and math.isfinite(az)
+
+    def test_j3_zero_position_returns_zero(self):
+        """J3Perturbation at origin must return (0,0,0), not crash."""
+        force = J3Perturbation()
+        ax, ay, az = force.acceleration(self.EPOCH, self.ZERO_POS, self.ZERO_VEL)
+        assert math.isfinite(ax) and math.isfinite(ay) and math.isfinite(az)
+
+    def test_srp_zero_mass_rejected(self):
+        """SolarRadiationPressureForce with mass_kg=0 must raise ValueError."""
+        with pytest.raises(ValueError, match="mass_kg"):
+            SolarRadiationPressureForce(cr=1.5, area_m2=10.0, mass_kg=0.0)

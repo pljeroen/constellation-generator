@@ -478,3 +478,17 @@ class TestEclipsePurity:
                     root = node.module.split('.')[0]
                     if root not in allowed and root != 'humeris':
                         assert False, f"Disallowed import from '{node.module}'"
+
+
+class TestEclipseEdgeCases:
+    """Eclipse computation hardening for degenerate inputs."""
+
+    def test_zero_sun_distance_returns_none(self):
+        """Sun at origin (degenerate) must not crash."""
+        from humeris.domain.eclipse import is_eclipsed, EclipseType
+        # Sun at nearly-zero distance — should handle gracefully
+        result = is_eclipsed(
+            sat_position_eci=(7e6, 0.0, 0.0),
+            sun_position_eci_m=(1.0, 0.0, 0.0),  # Very close sun (degenerate)
+        )
+        assert isinstance(result, EclipseType)

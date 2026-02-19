@@ -512,3 +512,21 @@ class TestDomainPurity:
                     top = node.module.split(".")[0]
                     assert top in allowed or top == "humeris", \
                         f"Forbidden import from: {node.module}"
+
+
+class TestJdToDatetimeHourOverflow:
+    """_jd_to_datetime must handle hour>=24 boundary correctly."""
+
+    def test_roundtrip_midnight_boundary(self):
+        """JD exactly at midnight must not crash with hour=24."""
+        from humeris.domain.time_systems import AstroTime
+        from datetime import datetime, timezone
+        # Midnight UTC = a whole JD.5 value — test near-boundary
+        epoch = datetime(2026, 3, 21, 0, 0, 0, 0, tzinfo=timezone.utc)
+        at = AstroTime.from_utc(epoch)
+        # Convert through JD and back
+        recovered = at.to_utc_datetime()
+        assert recovered.year == 2026
+        assert recovered.month == 3
+        assert recovered.day == 21
+        assert recovered.hour == 0

@@ -183,3 +183,29 @@ class TestFetchJsonValidation:
             # ValueError("Specify one of...") = catnr was ignored (bad)
             assert "Specify one of" not in str(e), \
                 "catnr=0 was ignored due to truthiness check"
+
+
+class TestCelestrakUrlSanitization:
+    """CelesTrak adapter must URL-encode group names to prevent injection."""
+
+    def test_fetch_group_encodes_special_chars(self):
+        """Group names with & must be URL-encoded, not injected as query params."""
+        from humeris.adapters.celestrak import CelesTrakAdapter
+        adapter = CelesTrakAdapter()
+        # Monkeypatch _fetch_json to capture the URL
+        captured_urls: list[str] = []
+        original = adapter._fetch_json
+        def capture(url: str) -> list:
+            captured_urls.append(url)
+            return []
+        adapter._fetch_json = capture
+        adapter.fetch_group("STATIONS&FORMAT=TLE")
+        assert len(captured_urls) == 1
+        url = captured_urls[0]
+        # The & in the group name must be encoded, not raw
+        assert "&FORMAT=TLE" not in url or url.count("FORMAT") == 1, (
+            f"URL parameter injection: {url}"
+        )
+        assert "%26" in url or "STATIONS%26FORMAT%3DTLE" in url, (
+            f"Group name not URL-encoded: {url}"
+        )

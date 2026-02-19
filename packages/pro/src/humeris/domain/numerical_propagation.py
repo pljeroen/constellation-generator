@@ -91,6 +91,8 @@ class TwoBodyGravity:
     ) -> tuple[float, float, float]:
         pos = np.array(position)
         r = float(np.linalg.norm(pos))
+        if r < 1e-3:
+            return (0.0, 0.0, 0.0)
         r3 = r * r * r
         coeff = -OrbitalConstants.MU_EARTH / r3
         a = coeff * pos
@@ -109,6 +111,8 @@ class J2Perturbation:
         pos = np.array(position)
         r2 = float(np.dot(pos, pos))
         r = float(np.sqrt(r2))
+        if r < 1e-3:
+            return (0.0, 0.0, 0.0)
         r5 = r2 * r2 * r
 
         mu = OrbitalConstants.MU_EARTH
@@ -141,6 +145,8 @@ class J3Perturbation:
         x, y, z = position
         r2 = float(np.dot(pos, pos))
         r = float(np.sqrt(r2))
+        if r < 1e-3:
+            return (0.0, 0.0, 0.0)
         r7 = r2 * r2 * r2 * r
 
         mu = OrbitalConstants.MU_EARTH
@@ -447,6 +453,8 @@ class SolarRadiationPressureForce:
         mass_kg: float,
         include_shadow: bool = False,
     ) -> None:
+        if mass_kg <= 0:
+            raise ValueError(f"mass_kg must be positive, got {mass_kg}")
         self._cr = cr
         self._area_m2 = area_m2
         self._mass_kg = mass_kg

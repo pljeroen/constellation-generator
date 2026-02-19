@@ -183,3 +183,33 @@ class TestLinkBudgetPurity:
                     root = node.module.split('.')[0]
                     if root not in allowed and root != 'humeris':
                         assert False, f"Disallowed import from '{node.module}'"
+
+
+class TestLinkBudgetInputValidation:
+    """Link budget functions must reject invalid inputs, not crash."""
+
+    def test_fspl_zero_distance_raises(self):
+        """free_space_path_loss_db with distance=0 must raise ValueError."""
+        with pytest.raises(ValueError):
+            free_space_path_loss_db(0.0, 1e9)
+
+    def test_fspl_negative_distance_raises(self):
+        """free_space_path_loss_db with negative distance must raise ValueError."""
+        with pytest.raises(ValueError):
+            free_space_path_loss_db(-100.0, 1e9)
+
+    def test_fspl_zero_frequency_raises(self):
+        """free_space_path_loss_db with frequency=0 must raise ValueError."""
+        with pytest.raises(ValueError):
+            free_space_path_loss_db(1000.0, 0.0)
+
+    def test_compute_link_budget_zero_power_raises(self):
+        """compute_link_budget with transmit_power_w=0 must raise ValueError."""
+        config = LinkConfig(
+            frequency_hz=26e9, transmit_power_w=0.0,
+            tx_antenna_gain_dbi=35.0, rx_antenna_gain_dbi=35.0,
+            system_noise_temp_k=500.0, bandwidth_hz=100e6,
+            additional_losses_db=2.0, required_snr_db=10.0,
+        )
+        with pytest.raises(ValueError):
+            compute_link_budget(config, 1000.0)

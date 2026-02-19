@@ -118,6 +118,8 @@ def compute_orbit_lifetime(
             da_dt = semi_major_axis_decay_rate(a, eccentricity, drag_config, **decay_kwargs)
 
         a += da_dt * dt_seconds
+        if a < OrbitalConstants.R_EARTH:
+            a = OrbitalConstants.R_EARTH
         t_elapsed += dt_seconds
 
         alt_km = (a - OrbitalConstants.R_EARTH) / 1000.0
