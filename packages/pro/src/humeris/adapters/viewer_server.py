@@ -93,6 +93,62 @@ _MAX_TOPOLOGY_SATS = 100   # Cap for O(n²) computations
 _MAX_PRECESSION_SATS = 24  # Subset for week-long precession view
 _GROUND_STATION_SAT_LIMIT = 20  # Max sats for ground station access computation
 
+# Pre-defined ground station network presets
+_GROUND_STATION_PRESETS: list[dict[str, Any]] = [
+    {
+        "name": "NASA DSN",
+        "description": "NASA Deep Space Network — three 70m antenna complexes",
+        "stations": [
+            {"name": "Goldstone", "lat_deg": 35.4267, "lon_deg": -116.89},
+            {"name": "Madrid", "lat_deg": 40.4314, "lon_deg": -4.2481},
+            {"name": "Canberra", "lat_deg": -35.4014, "lon_deg": 148.9817},
+        ],
+    },
+    {
+        "name": "ESA ESTRACK",
+        "description": "ESA European Space Tracking network",
+        "stations": [
+            {"name": "Kourou", "lat_deg": 5.2522, "lon_deg": -52.7764},
+            {"name": "Redu", "lat_deg": 50.0019, "lon_deg": 5.1464},
+            {"name": "Cebreros", "lat_deg": 40.4528, "lon_deg": -4.3678},
+            {"name": "New Norcia", "lat_deg": -31.0483, "lon_deg": 116.1917},
+            {"name": "Malargue", "lat_deg": -35.7758, "lon_deg": -69.3983},
+        ],
+    },
+    {
+        "name": "US NEN",
+        "description": "NASA Near Earth Network ground stations",
+        "stations": [
+            {"name": "Wallops", "lat_deg": 37.9333, "lon_deg": -75.4667},
+            {"name": "Fairbanks", "lat_deg": 64.8594, "lon_deg": -147.8536},
+            {"name": "McMurdo", "lat_deg": -77.8461, "lon_deg": 166.6689},
+            {"name": "Svalbard", "lat_deg": 78.2306, "lon_deg": 15.3894},
+            {"name": "Singapore", "lat_deg": 1.3521, "lon_deg": 103.8198},
+        ],
+    },
+    {
+        "name": "KSAT Lite",
+        "description": "Kongsberg Satellite Services — polar and equatorial sites",
+        "stations": [
+            {"name": "Svalbard", "lat_deg": 78.2306, "lon_deg": 15.3894},
+            {"name": "Troll", "lat_deg": -72.0117, "lon_deg": 2.5350},
+            {"name": "Puertollano", "lat_deg": 38.6722, "lon_deg": -4.1500},
+        ],
+    },
+    {
+        "name": "Global Coverage",
+        "description": "Minimal set for near-continuous LEO coverage",
+        "stations": [
+            {"name": "Svalbard", "lat_deg": 78.2306, "lon_deg": 15.3894},
+            {"name": "Fairbanks", "lat_deg": 64.8594, "lon_deg": -147.8536},
+            {"name": "Santiago", "lat_deg": -33.4489, "lon_deg": -70.6693},
+            {"name": "Hartebeesthoek", "lat_deg": -25.8872, "lon_deg": 27.7075},
+            {"name": "Tokyo", "lat_deg": 35.6762, "lon_deg": 139.6503},
+            {"name": "McMurdo", "lat_deg": -77.8461, "lon_deg": 166.6689},
+        ],
+    },
+]
+
 # Color legends for analysis types
 _LEGENDS: dict[str, list[dict[str, str]]] = {
     "eclipse": [
@@ -455,12 +511,15 @@ def _rad_to_deg(rad: float) -> float:
 class LayerManager:
     """Manages visualization layers and their CZML generation."""
 
+    VALID_FIDELITY = ("standard", "high")
+
     def __init__(self, epoch: datetime) -> None:
         self.epoch = epoch
         self.layers: dict[str, LayerState] = {}
         self._counter = 0
         self.duration = _DEFAULT_DURATION
         self.step = _DEFAULT_STEP
+        self.fidelity: str = "standard"
         self._lock = threading.RLock()
 
     def _next_id(self) -> str:
@@ -652,8 +711,161 @@ class LayerManager:
                 "epoch": self.epoch.isoformat(),
                 "duration_s": self.duration.total_seconds(),
                 "step_s": self.step.total_seconds(),
+                "fidelity": self.fidelity,
                 "layers": layers,
             }
+
+    def load_session(self, session_data: dict[str, Any]) -> int:
+        """Restore session state from save_session() output.
+
+        Clears existing layers, then restores in three passes:
+        Pass 1: constellation layers (walker/celestrak)
+        Pass 1.5: ground station layers
+        Pass 2: analysis layers (with source constellation references)
+
+        Returns the number of layers restored.
+        """
+        layers_data = session_data.get("layers", [])
+        if not isinstance(layers_data, list):
+            raise ValueError("Session 'layers' must be a list")
+        layers_data = [ld for ld in layers_data if isinstance(ld, dict)]
+
+        # Clear existing layers
+        with self._lock:
+            self.layers.clear()
+            self._counter = 0
+            if "duration_s" in session_data:
+                self.duration = timedelta(seconds=session_data["duration_s"])
+            if "step_s" in session_data:
+                self.step = timedelta(seconds=session_data["step_s"])
+            fid = session_data.get("fidelity", "standard")
+            if fid in self.VALID_FIDELITY:
+                self.fidelity = fid
+
+        # Pass 1: Restore constellation layers (walker and celestrak)
+        restored = 0
+        restored_layers: list[str] = []
+        for layer_data in layers_data:
+            lt = layer_data.get("layer_type", "")
+            params = layer_data.get("params", {})
+            if lt in ("walker", "celestrak"):
+                try:
+                    config = ShellConfig(
+                        altitude_km=params.get("altitude_km", 550),
+                        inclination_deg=params.get("inclination_deg", 53),
+                        num_planes=params.get("num_planes", 6),
+                        sats_per_plane=params.get("sats_per_plane", 10),
+                        phase_factor=params.get("phase_factor", 1),
+                        raan_offset_deg=params.get("raan_offset_deg", 0),
+                        shell_name=params.get("shell_name", "Walker"),
+                    )
+                    sats = generate_walker_shell(config)
+                    states = [
+                        derive_orbital_state(s, self.epoch, include_j2=True)
+                        for s in sats
+                    ]
+                    layer_id = self.add_layer(
+                        name=layer_data.get("name", f"Constellation:{config.shell_name}"),
+                        category=layer_data.get("category", "Constellation"),
+                        layer_type=lt,
+                        states=states,
+                        params=params,
+                        mode=layer_data.get("mode"),
+                        visible=layer_data.get("visible", True),
+                    )
+                    restored_layers.append(layer_id)
+                    restored += 1
+                except (KeyError, TypeError, ValueError):
+                    restored_layers.append("")
+            else:
+                restored_layers.append("")
+
+        # Pass 1.5: Restore ground station layers
+        for idx, layer_data in enumerate(layers_data):
+            lt = layer_data.get("layer_type", "")
+            if lt != "ground_station":
+                continue
+            params = layer_data.get("params", {})
+            gs_source_states: list[OrbitalState] = []
+            for lid in restored_layers:
+                if lid and lid in self.layers:
+                    layer = self.layers[lid]
+                    if layer.category == "Constellation":
+                        gs_source_states = layer.states
+                        break
+            try:
+                gs_lid = self.add_ground_station(
+                    name=params.get("name", layer_data.get("name", "Station")),
+                    lat_deg=params.get("lat_deg", 0.0),
+                    lon_deg=params.get("lon_deg", 0.0),
+                    source_states=gs_source_states[:_GROUND_STATION_SAT_LIMIT],
+                )
+                restored_layers[idx] = gs_lid
+                restored += 1
+            except (KeyError, TypeError, ValueError):
+                pass
+
+        # Pass 2: Restore analysis layers using source constellation reference
+        for idx, layer_data in enumerate(layers_data):
+            lt = layer_data.get("layer_type", "")
+            if lt in ("walker", "celestrak", "ground_station"):
+                continue
+            params = layer_data.get("params", {})
+            source_idx = layer_data.get("source_layer_index")
+            source_states: list[OrbitalState] = []
+            if source_idx is not None and 0 <= source_idx < len(restored_layers):
+                source_lid = restored_layers[source_idx]
+                if source_lid and source_lid in self.layers:
+                    source_states = self.layers[source_lid].states
+            if not source_states:
+                for lid in restored_layers:
+                    if lid and lid in self.layers:
+                        layer = self.layers[lid]
+                        if layer.category == "Constellation":
+                            source_states = layer.states
+                            break
+            if not source_states:
+                continue
+            try:
+                self.add_layer(
+                    name=layer_data.get("name", f"Analysis:{lt}"),
+                    category=layer_data.get("category", "Analysis"),
+                    layer_type=lt,
+                    states=source_states,
+                    params=params,
+                    mode=layer_data.get("mode"),
+                    visible=layer_data.get("visible", True),
+                )
+                restored += 1
+            except (KeyError, TypeError, ValueError, ArithmeticError):
+                pass
+
+        return restored
+
+    def export_all_czml(self, visible_only: bool = True) -> list[dict[str, Any]]:
+        """Merge all (visible) layers into a single CZML document.
+
+        The merged document uses a single document packet with the
+        widest time range, then appends all non-document packets.
+        """
+        doc_packet: dict[str, Any] = {
+            "id": "document",
+            "name": "Constellation Export",
+            "version": "1.0",
+        }
+        merged: list[dict[str, Any]] = [doc_packet]
+        with self._lock:
+            for layer in self.layers.values():
+                if visible_only and not layer.visible:
+                    continue
+                for pkt in layer.czml:
+                    if pkt.get("id") == "document":
+                        # Capture clock from first document packet with one
+                        if "clock" in pkt and "clock" not in doc_packet:
+                            doc_packet["clock"] = pkt["clock"]
+                        continue
+                    merged.append(pkt)
+        return merged
 
     def get_czml(self, layer_id: str) -> list[dict[str, Any]]:
         """Return CZML packets for a layer. Raises KeyError if not found."""
@@ -763,6 +975,26 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                 self._error_response(404, f"Layer not found: {param}")
             return
 
+        if base == "/api/ground-station-presets":
+            self._json_response({"presets": _GROUND_STATION_PRESETS})
+            return
+
+        if base == "/api/export-all":
+            merged = self.layer_manager.export_all_czml()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header(
+                "Content-Disposition",
+                'attachment; filename="constellation-all.czml"',
+            )
+            port = self.server.server_address[1]
+            self.send_header("Access-Control-Allow-Origin", f"http://localhost:{port}")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.end_headers()
+            self.wfile.write(json.dumps(merged, indent=2).encode())
+            return
+
         self._error_response(404, "Not found")
 
     # --- POST ---
@@ -780,6 +1012,10 @@ class ConstellationHandler(BaseHTTPRequestHandler):
 
         if base == "/api/ground-station":
             self._handle_add_ground_station()
+            return
+
+        if base == "/api/ground-station-network":
+            self._handle_add_ground_station_network()
             return
 
         if base == "/api/session" and param == "save":
@@ -960,6 +1196,47 @@ class ConstellationHandler(BaseHTTPRequestHandler):
             logger.exception("Ground station failed")
             self._error_response(500, f"Ground station failed: {e}")
 
+    def _handle_add_ground_station_network(self) -> None:
+        try:
+            body = self._read_body()
+        except (ValueError, json.JSONDecodeError) as e:
+            self._error_response(400, f"Bad request body: {e}")
+            return
+        preset_name = body.get("preset", "")
+        preset = None
+        for p in _GROUND_STATION_PRESETS:
+            if p["name"] == preset_name:
+                preset = p
+                break
+        if preset is None:
+            self._error_response(
+                404,
+                f"Unknown preset: {preset_name!r}. "
+                f"Available: {[p['name'] for p in _GROUND_STATION_PRESETS]}",
+            )
+            return
+
+        # Find first constellation layer for access computation
+        source_states: list[OrbitalState] = []
+        for layer in self.layer_manager.layers.values():
+            if layer.category == "Constellation":
+                source_states = layer.states
+                break
+
+        added = 0
+        for st in preset["stations"]:
+            try:
+                self.layer_manager.add_ground_station(
+                    name=st["name"],
+                    lat_deg=st["lat_deg"],
+                    lon_deg=st["lon_deg"],
+                    source_states=source_states[:_GROUND_STATION_SAT_LIMIT],
+                )
+                added += 1
+            except (ValueError, TypeError, KeyError) as e:
+                logger.warning("Failed to add station %s: %s", st["name"], e)
+        self._json_response({"added": added, "preset": preset_name}, 201)
+
     def _handle_load_session(self) -> None:
         try:
             body = self._read_body()
@@ -967,125 +1244,11 @@ class ConstellationHandler(BaseHTTPRequestHandler):
             self._error_response(400, f"Bad request body: {e}")
             return
         session = body.get("session", {})
-        layers_data = session.get("layers", [])
-
-        if not isinstance(layers_data, list):
-            self._error_response(400, "Session 'layers' must be a list")
+        try:
+            restored = self.layer_manager.load_session(session)
+        except ValueError as e:
+            self._error_response(400, str(e))
             return
-
-        # Filter non-dict entries gracefully
-        layers_data = [ld for ld in layers_data if isinstance(ld, dict)]
-
-        # Clear existing layers before loading (BUG-007)
-        with self.layer_manager._lock:
-            self.layer_manager.layers.clear()
-            self.layer_manager._counter = 0
-            # Restore duration/step if present (under same lock)
-            if "duration_s" in session:
-                self.layer_manager.duration = timedelta(seconds=session["duration_s"])
-            if "step_s" in session:
-                self.layer_manager.step = timedelta(seconds=session["step_s"])
-
-        # Pass 1: Restore constellation layers (walker and celestrak)
-        restored = 0
-        restored_layers: list[str] = []  # layer_ids in order
-        for layer_data in layers_data:
-            lt = layer_data.get("layer_type", "")
-            params = layer_data.get("params", {})
-            if lt in ("walker", "celestrak"):
-                try:
-                    config = ShellConfig(
-                        altitude_km=params.get("altitude_km", 550),
-                        inclination_deg=params.get("inclination_deg", 53),
-                        num_planes=params.get("num_planes", 6),
-                        sats_per_plane=params.get("sats_per_plane", 10),
-                        phase_factor=params.get("phase_factor", 1),
-                        raan_offset_deg=params.get("raan_offset_deg", 0),
-                        shell_name=params.get("shell_name", "Walker"),
-                    )
-                    sats = generate_walker_shell(config)
-                    states = [
-                        derive_orbital_state(s, self.layer_manager.epoch, include_j2=True)
-                        for s in sats
-                    ]
-                    layer_id = self.layer_manager.add_layer(
-                        name=layer_data.get("name", f"Constellation:{config.shell_name}"),
-                        category=layer_data.get("category", "Constellation"),
-                        layer_type=lt,
-                        states=states,
-                        params=params,
-                        mode=layer_data.get("mode"),
-                        visible=layer_data.get("visible", True),
-                    )
-                    restored_layers.append(layer_id)
-                    restored += 1
-                except (KeyError, TypeError, ValueError):
-                    restored_layers.append("")
-            else:
-                restored_layers.append("")
-
-        # Pass 1.5: Restore ground station layers
-        for idx, layer_data in enumerate(layers_data):
-            lt = layer_data.get("layer_type", "")
-            if lt != "ground_station":
-                continue
-            params = layer_data.get("params", {})
-            # Find source constellation states for access computation
-            gs_source_states: list[OrbitalState] = []
-            for lid in restored_layers:
-                if lid and lid in self.layer_manager.layers:
-                    layer = self.layer_manager.layers[lid]
-                    if layer.category == "Constellation":
-                        gs_source_states = layer.states
-                        break
-            try:
-                gs_lid = self.layer_manager.add_ground_station(
-                    name=params.get("name", layer_data.get("name", "Station")),
-                    lat_deg=params.get("lat_deg", 0.0),
-                    lon_deg=params.get("lon_deg", 0.0),
-                    source_states=gs_source_states[:_GROUND_STATION_SAT_LIMIT],
-                )
-                restored_layers[idx] = gs_lid
-                restored += 1
-            except (KeyError, TypeError, ValueError):
-                pass
-
-        # Pass 2: Restore analysis layers using source constellation reference
-        for idx, layer_data in enumerate(layers_data):
-            lt = layer_data.get("layer_type", "")
-            if lt in ("walker", "celestrak", "ground_station"):
-                continue
-            params = layer_data.get("params", {})
-            source_idx = layer_data.get("source_layer_index")
-            # Find source constellation states
-            source_states: list[OrbitalState] = []
-            if source_idx is not None and 0 <= source_idx < len(restored_layers):
-                source_lid = restored_layers[source_idx]
-                if source_lid and source_lid in self.layer_manager.layers:
-                    source_states = self.layer_manager.layers[source_lid].states
-            # Fallback: use first constellation layer
-            if not source_states:
-                for lid in restored_layers:
-                    if lid and lid in self.layer_manager.layers:
-                        layer = self.layer_manager.layers[lid]
-                        if layer.category == "Constellation":
-                            source_states = layer.states
-                            break
-            if not source_states:
-                continue
-            try:
-                self.layer_manager.add_layer(
-                    name=layer_data.get("name", f"Analysis:{lt}"),
-                    category=layer_data.get("category", "Analysis"),
-                    layer_type=lt,
-                    states=source_states,
-                    params=params,
-                    mode=layer_data.get("mode"),
-                    visible=layer_data.get("visible", True),
-                )
-                restored += 1
-            except (KeyError, TypeError, ValueError, ArithmeticError):
-                pass
         self._json_response({"restored": restored})
 
     # --- PUT ---
@@ -1132,6 +1295,7 @@ class ConstellationHandler(BaseHTTPRequestHandler):
         if base == "/api/settings":
             dur = body.get("duration_s")
             step = body.get("step_s")
+            fidelity = body.get("fidelity")
             if dur is not None:
                 if not isinstance(dur, (int, float)) or dur <= 0 or dur > 604800:
                     self._error_response(
@@ -1146,9 +1310,19 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                     )
                     return
                 self.layer_manager.step = timedelta(seconds=step)
+            if fidelity is not None:
+                if fidelity not in LayerManager.VALID_FIDELITY:
+                    self._error_response(
+                        400,
+                        f"fidelity must be one of {LayerManager.VALID_FIDELITY}, "
+                        f"got {fidelity!r}",
+                    )
+                    return
+                self.layer_manager.fidelity = fidelity
             self._json_response({
                 "duration_s": self.layer_manager.duration.total_seconds(),
                 "step_s": self.layer_manager.step.total_seconds(),
+                "fidelity": self.layer_manager.fidelity,
             })
             return
 

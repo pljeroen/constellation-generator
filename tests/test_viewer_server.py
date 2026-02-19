@@ -2012,6 +2012,379 @@ class TestCelesTrakRestoreFidelity:
         assert restored_layer["params"]["group"] == "GPS-OPS"
 
 
+class TestLayerManagerLoadSession:
+    """LayerManager.load_session() restores session state directly."""
+
+    def test_load_session_method_exists(self):
+        """LayerManager must have a load_session method."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        assert callable(getattr(mgr, "load_session", None))
+
+    def test_load_session_restores_walker(self):
+        """load_session with a walker layer should restore it."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        session_data = {
+            "epoch": EPOCH.isoformat(),
+            "duration_s": 7200,
+            "step_s": 60,
+            "layers": [{
+                "name": "Constellation:LoadTest",
+                "category": "Constellation",
+                "layer_type": "walker",
+                "mode": "snapshot",
+                "visible": True,
+                "params": {
+                    "altitude_km": 550, "inclination_deg": 53,
+                    "num_planes": 2, "sats_per_plane": 2,
+                    "phase_factor": 1, "raan_offset_deg": 0,
+                    "shell_name": "LoadTest",
+                },
+            }],
+        }
+        restored = mgr.load_session(session_data)
+        assert restored == 1
+        assert len(mgr.layers) == 1
+        layer = list(mgr.layers.values())[0]
+        assert layer.name == "Constellation:LoadTest"
+        assert layer.layer_type == "walker"
+
+    def test_load_session_clears_existing(self):
+        """load_session must clear existing layers before restoring."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states()
+        mgr.add_layer(
+            name="Old", category="Constellation",
+            layer_type="walker", states=states, params={},
+        )
+        assert len(mgr.layers) == 1
+        session_data = {
+            "layers": [{
+                "name": "New",
+                "category": "Constellation",
+                "layer_type": "walker",
+                "mode": "snapshot",
+                "params": {
+                    "altitude_km": 800, "inclination_deg": 97,
+                    "num_planes": 1, "sats_per_plane": 2,
+                    "phase_factor": 1, "raan_offset_deg": 0,
+                    "shell_name": "New",
+                },
+            }],
+        }
+        mgr.load_session(session_data)
+        assert len(mgr.layers) == 1
+        layer = list(mgr.layers.values())[0]
+        assert layer.name == "New"
+
+    def test_load_session_restores_duration_step(self):
+        """load_session should restore duration and step from session data."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        session_data = {
+            "duration_s": 3600,
+            "step_s": 30,
+            "layers": [],
+        }
+        mgr.load_session(session_data)
+        assert mgr.duration == timedelta(seconds=3600)
+        assert mgr.step == timedelta(seconds=30)
+
+    def test_load_session_returns_count(self):
+        """load_session must return the number of restored layers."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        session_data = {"layers": []}
+        result = mgr.load_session(session_data)
+        assert result == 0
+
+
+class TestCliLoadSession:
+    """CLI --load-session flag loads a session file at startup."""
+
+    def test_load_session_argument_accepted(self):
+        """CLI parser must accept --load-session argument."""
+        import subprocess
+        result = subprocess.run(
+            ["venv/bin/python3", "-m", "humeris.cli", "--help"],
+            capture_output=True, text=True, timeout=10,
+        )
+        assert "--load-session" in result.stdout
+
+    def test_load_session_file_not_found(self, tmp_path):
+        """--load-session with nonexistent file should error."""
+        import subprocess
+        result = subprocess.run(
+            [
+                "venv/bin/python3", "-m", "humeris.cli",
+                "--serve", "--load-session", "/nonexistent/session.json",
+            ],
+            capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode != 0
+        assert "not found" in result.stderr.lower() or "not found" in result.stdout.lower()
+
+    def test_load_session_invalid_json(self, tmp_path):
+        """--load-session with invalid JSON should error."""
+        import subprocess
+        bad_file = tmp_path / "bad.json"
+        bad_file.write_text("not json at all")
+        result = subprocess.run(
+            [
+                "venv/bin/python3", "-m", "humeris.cli",
+                "--serve", "--load-session", str(bad_file),
+            ],
+            capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode != 0
+
+
+class TestFidelityMode:
+    """LayerManager fidelity mode controls propagation quality."""
+
+    def test_default_fidelity_is_standard(self):
+        """LayerManager defaults to 'standard' fidelity."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        assert mgr.fidelity == "standard"
+
+    def test_fidelity_set_to_high(self):
+        """LayerManager fidelity can be set to 'high'."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        mgr.fidelity = "high"
+        assert mgr.fidelity == "high"
+
+    def test_fidelity_in_save_session(self):
+        """save_session includes fidelity setting."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        mgr.fidelity = "high"
+        session = mgr.save_session()
+        assert session["fidelity"] == "high"
+
+    def test_fidelity_restored_from_load_session(self):
+        """load_session restores fidelity setting."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        session_data = {
+            "fidelity": "high",
+            "layers": [],
+        }
+        mgr.load_session(session_data)
+        assert mgr.fidelity == "high"
+
+    def test_fidelity_via_settings_api(self, running_server):
+        """PUT /api/settings with fidelity should update it."""
+        port, mgr = running_server
+        status, body = _api_request(port, "PUT", "/api/settings", {
+            "fidelity": "high",
+        })
+        assert status == 200
+        assert body.get("fidelity") == "high"
+        assert mgr.fidelity == "high"
+
+    def test_fidelity_invalid_value_rejected(self, running_server):
+        """PUT /api/settings with invalid fidelity should return 400."""
+        port, mgr = running_server
+        status, body = _api_request(port, "PUT", "/api/settings", {
+            "fidelity": "ultra",
+        })
+        assert status == 400
+
+
+class TestGroundStationPresets:
+    """Pre-defined ground station networks can be added via API."""
+
+    def test_presets_available_via_api(self, running_server):
+        """GET /api/ground-station-presets should return preset list."""
+        port, mgr = running_server
+        status, body = _api_request(port, "GET", "/api/ground-station-presets")
+        assert status == 200
+        assert "presets" in body
+        assert len(body["presets"]) >= 3  # At least DSN, ESTRACK, US
+
+    def test_preset_has_required_fields(self, running_server):
+        """Each preset must have name, description, stations."""
+        port, mgr = running_server
+        _, body = _api_request(port, "GET", "/api/ground-station-presets")
+        for preset in body["presets"]:
+            assert "name" in preset
+            assert "description" in preset
+            assert "stations" in preset
+            assert len(preset["stations"]) >= 1
+            for st in preset["stations"]:
+                assert "name" in st
+                assert "lat_deg" in st
+                assert "lon_deg" in st
+
+    def test_add_preset_network(self, running_server):
+        """POST /api/ground-station-network should add all stations."""
+        port, mgr = running_server
+        # First add a constellation for access computation
+        _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 1, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "GS-Test",
+            },
+        })
+        status, body = _api_request(port, "POST", "/api/ground-station-network", {
+            "preset": "NASA DSN",
+        })
+        assert status == 201 or status == 200
+        assert body.get("added", 0) >= 3  # DSN has 3 stations
+
+    def test_add_unknown_preset_returns_404(self, running_server):
+        """POST with unknown preset name should return 404."""
+        port, mgr = running_server
+        status, body = _api_request(port, "POST", "/api/ground-station-network", {
+            "preset": "Nonexistent Network",
+        })
+        assert status == 404
+
+
+class TestMultiLayerCzmlExport:
+    """GET /api/export-all merges visible layers into one CZML document."""
+
+    def test_export_all_returns_czml(self, running_server):
+        """GET /api/export-all should return merged CZML."""
+        port, mgr = running_server
+        _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 1, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "ExportAll-1",
+            },
+        })
+        _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 800, "inclination_deg": 97,
+                "num_planes": 1, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "ExportAll-2",
+            },
+        })
+        status, body = _api_request(port, "GET", "/api/export-all")
+        assert status == 200
+        # Should be a list of CZML packets
+        assert isinstance(body, list)
+        # First packet must be a document packet
+        assert body[0].get("id") == "document"
+        # Should have satellites from both constellations
+        assert len(body) > 3  # document + at least 2 sats from each
+
+    def test_export_all_skips_hidden_layers(self, running_server):
+        """Hidden layers should not be included in export-all."""
+        port, mgr = running_server
+        _, add_resp = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 550, "inclination_deg": 53,
+                "num_planes": 1, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "Visible",
+            },
+        })
+        _, add_resp2 = _api_request(port, "POST", "/api/constellation", {
+            "type": "walker",
+            "params": {
+                "altitude_km": 800, "inclination_deg": 97,
+                "num_planes": 1, "sats_per_plane": 2,
+                "phase_factor": 1, "raan_offset_deg": 0,
+                "shell_name": "Hidden",
+            },
+        })
+        # Hide the second layer
+        layer_id = add_resp2["layer_id"]
+        _api_request(port, "PUT", f"/api/layer/{layer_id}", {"visible": False})
+
+        _, all_czml = _api_request(port, "GET", "/api/export-all")
+        _, visible_czml = _api_request(port, "GET", f"/api/czml/{add_resp['layer_id']}")
+        # All-export should have same count as just the visible layer
+        # (document packet + satellite packets from visible only)
+        assert len(all_czml) == len(visible_czml)
+
+    def test_export_all_empty_returns_document_only(self, running_server):
+        """No layers should return just a document packet."""
+        port, mgr = running_server
+        status, body = _api_request(port, "GET", "/api/export-all")
+        assert status == 200
+        assert isinstance(body, list)
+        assert len(body) == 1
+        assert body[0].get("id") == "document"
+
+
+class TestCliHeadlessMode:
+    """CLI --headless mode exports CZML without starting server."""
+
+    def test_headless_argument_accepted(self):
+        """CLI parser must accept --headless argument."""
+        import subprocess
+        result = subprocess.run(
+            ["venv/bin/python3", "-m", "humeris.cli", "--help"],
+            capture_output=True, text=True, timeout=10,
+        )
+        assert "--headless" in result.stdout
+
+    def test_headless_requires_load_session(self):
+        """--headless without --load-session should error."""
+        import subprocess
+        result = subprocess.run(
+            [
+                "venv/bin/python3", "-m", "humeris.cli",
+                "--serve", "--headless",
+            ],
+            capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode != 0
+        assert "load-session" in result.stderr.lower() or "load-session" in result.stdout.lower()
+
+    def test_headless_export_czml(self, tmp_path):
+        """--headless --export-czml should export CZML files and exit."""
+        import subprocess
+        import json as _json
+        # Create a minimal session file
+        session = {
+            "layers": [{
+                "name": "Constellation:HeadlessTest",
+                "category": "Constellation",
+                "layer_type": "walker",
+                "mode": "snapshot",
+                "params": {
+                    "altitude_km": 550, "inclination_deg": 53,
+                    "num_planes": 1, "sats_per_plane": 2,
+                    "phase_factor": 1, "raan_offset_deg": 0,
+                    "shell_name": "HeadlessTest",
+                },
+            }],
+        }
+        session_file = tmp_path / "session.json"
+        session_file.write_text(_json.dumps(session))
+        output_dir = tmp_path / "czml_output"
+
+        result = subprocess.run(
+            [
+                "venv/bin/python3", "-m", "humeris.cli",
+                "--serve", "--headless",
+                "--load-session", str(session_file),
+                "--export-czml", str(output_dir),
+            ],
+            capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        assert output_dir.exists()
+        czml_files = list(output_dir.glob("*.czml"))
+        assert len(czml_files) >= 1
+
+
 class TestViewerServerPurity:
     """Adapter purity: only stdlib + internal imports allowed."""
 

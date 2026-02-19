@@ -182,8 +182,20 @@ def run_live(
     return len(satellites), satellites
 
 
-def _run_serve(port: int = 8765) -> None:
+def _run_serve(
+    port: int = 8765,
+    load_session_path: str | None = None,
+    headless: bool = False,
+    export_czml_path: str | None = None,
+) -> None:
     """Start the interactive Cesium viewer server with default shells."""
+    if headless and not load_session_path:
+        print(
+            "Error: --headless requires --load-session <file>",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     try:
         from humeris.adapters.viewer_server import (
             LayerManager,
@@ -197,54 +209,102 @@ def _run_serve(port: int = 8765) -> None:
         )
         sys.exit(1)
 
+    import json as _json
     import webbrowser
     from datetime import datetime, timedelta, timezone
+
+    # If loading a session, validate the file first
+    session_data = None
+    if load_session_path:
+        import os
+        if not os.path.exists(load_session_path):
+            print(
+                f"Error: Session file not found: {load_session_path}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        try:
+            with open(load_session_path, encoding="utf-8") as f:
+                session_data = _json.load(f)
+        except (_json.JSONDecodeError, UnicodeDecodeError) as e:
+            print(
+                f"Error: Invalid session file: {e}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     epoch = datetime.now(tz=timezone.utc)
     mgr = LayerManager(epoch=epoch)
 
-    # Pre-load default Walker shells
-    walker_shells = [s for s in get_default_shells() if s.altitude_km in (500, 450, 400)]
-    for shell in walker_shells:
-        print(f"  Generating {shell.shell_name}...")
-        sats = generate_walker_shell(shell)
-        states = [derive_orbital_state(s, epoch, include_j2=True) for s in sats]
-        mgr.add_layer(
-            name=f"Constellation:{shell.shell_name}",
-            category="Constellation",
-            layer_type="walker",
-            states=states,
-            params={
-                "altitude_km": shell.altitude_km,
-                "inclination_deg": shell.inclination_deg,
-                "num_planes": shell.num_planes,
-                "sats_per_plane": shell.sats_per_plane,
-                "phase_factor": shell.phase_factor,
-                "raan_offset_deg": shell.raan_offset_deg,
-                "shell_name": shell.shell_name,
-            },
-        )
-        print(f"    {len(sats)} satellites")
-
-    # Try to fetch ISS from CelesTrak
-    try:
-        from humeris.adapters.celestrak import CelesTrakAdapter
-        print("  Fetching ISS from CelesTrak...")
-        celestrak = CelesTrakAdapter()
-        iss_sats = celestrak.fetch_satellites(name="ISS (ZARYA)", epoch=epoch)
-        if iss_sats:
-            iss_states = [derive_orbital_state(s, epoch, include_j2=True) for s in iss_sats]
+    if session_data is not None:
+        # Load from session file instead of default shells
+        print(f"Loading session from {load_session_path}...")
+        restored = mgr.load_session(session_data)
+        print(f"  Restored {restored} layers")
+    else:
+        # Pre-load default Walker shells
+        walker_shells = [s for s in get_default_shells() if s.altitude_km in (500, 450, 400)]
+        for shell in walker_shells:
+            print(f"  Generating {shell.shell_name}...")
+            sats = generate_walker_shell(shell)
+            states = [derive_orbital_state(s, epoch, include_j2=True) for s in sats]
             mgr.add_layer(
-                name="Constellation:ISS",
+                name=f"Constellation:{shell.shell_name}",
                 category="Constellation",
-                layer_type="celestrak",
-                states=iss_states,
-                params={"name": "ISS (ZARYA)"},
-                mode="animated",
+                layer_type="walker",
+                states=states,
+                params={
+                    "altitude_km": shell.altitude_km,
+                    "inclination_deg": shell.inclination_deg,
+                    "num_planes": shell.num_planes,
+                    "sats_per_plane": shell.sats_per_plane,
+                    "phase_factor": shell.phase_factor,
+                    "raan_offset_deg": shell.raan_offset_deg,
+                    "shell_name": shell.shell_name,
+                },
             )
-            print(f"    ISS: {len(iss_sats)} object(s)")
-    except Exception as e:
-        print(f"    ISS fetch skipped: {e}")
+            print(f"    {len(sats)} satellites")
+
+        # Try to fetch ISS from CelesTrak
+        try:
+            from humeris.adapters.celestrak import CelesTrakAdapter
+            print("  Fetching ISS from CelesTrak...")
+            celestrak = CelesTrakAdapter()
+            iss_sats = celestrak.fetch_satellites(name="ISS (ZARYA)", epoch=epoch)
+            if iss_sats:
+                iss_states = [derive_orbital_state(s, epoch, include_j2=True) for s in iss_sats]
+                mgr.add_layer(
+                    name="Constellation:ISS",
+                    category="Constellation",
+                    layer_type="celestrak",
+                    states=iss_states,
+                    params={"name": "ISS (ZARYA)"},
+                    mode="animated",
+                )
+                print(f"    ISS: {len(iss_sats)} object(s)")
+        except Exception as e:
+            print(f"    ISS fetch skipped: {e}")
+
+    # Headless mode: export and exit without starting server
+    if headless:
+        if export_czml_path:
+            import os
+            os.makedirs(export_czml_path, exist_ok=True)
+            exported = 0
+            with mgr._lock:
+                for layer_id, layer in mgr.layers.items():
+                    safe_name = layer.name.replace("/", "_").replace(":", "_").replace(" ", "_")
+                    filename = f"{safe_name}.czml"
+                    filepath = os.path.join(export_czml_path, filename)
+                    with open(filepath, "w", encoding="utf-8") as f:
+                        _json.dump(layer.czml, f, indent=2)
+                    exported += 1
+                    print(f"  Exported {filename} ({len(layer.czml)} packets)")
+            print(f"Exported {exported} CZML files to {export_czml_path}")
+        else:
+            print(f"Session loaded: {len(mgr.layers)} layers")
+            print("No export requested. Use --export-czml <dir> to export.")
+        return
 
     try:
         server = create_viewer_server(mgr, port=port)
@@ -288,6 +348,18 @@ def main():
     parser.add_argument(
         '--port', type=int, default=8765,
         help="Port for viewer server (default: 8765, used with --serve)"
+    )
+    parser.add_argument(
+        '--load-session',
+        help="Load a saved session JSON file at startup (used with --serve)"
+    )
+    parser.add_argument(
+        '--headless', action='store_true', default=False,
+        help="Run without browser or server — load session, export, exit (used with --serve)"
+    )
+    parser.add_argument(
+        '--export-czml',
+        help="Export all layers as CZML files to directory (used with --headless)"
     )
     parser.add_argument(
         '--base-id', type=int, default=100,
@@ -375,7 +447,12 @@ def main():
     args = parser.parse_args()
 
     if args.serve:
-        _run_serve(port=args.port)
+        _run_serve(
+            port=args.port,
+            load_session_path=args.load_session,
+            headless=args.headless,
+            export_czml_path=args.export_czml,
+        )
         return
 
     if not args.input:
