@@ -8,9 +8,10 @@ flows through port interfaces implemented by adapters.
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                   Adapters                      │
-│  CelesTrak · CesiumJS · CSV · GeoJSON · CZML    │
-│  ViewerServer · JSON I/O                        │
+│                   Adapters (17)                  │
+│  CelesTrak · JSON I/O · CSV · GeoJSON · CZML    │
+│  KML · Celestia · Blender · Stellarium · UBOX   │
+│  SpaceEngine · KSP · CesiumJS · ViewerServer    │
 │                                                 │
 │  ┌───────────────────────────────────────────┐  │
 │  │              Ports (Protocols)            │  │
@@ -18,10 +19,10 @@ flows through port interfaces implemented by adapters.
 │  │  OrbitalDataSource · SatelliteExporter    │  │
 │  │                                           │  │
 │  │  ┌─────────────────────────────────────┐  │  │
-│  │  │           Domain (stdlib only)      │  │  │
+│  │  │         Domain (stdlib + NumPy)     │  │  │
 │  │  │                                     │  │  │
-│  │  │  76 modules · math/datetime only    │  │  │
-│  │  │  Zero external dependencies         │  │  │
+│  │  │  82 modules · stdlib + NumPy only   │  │  │
+│  │  │  No other external dependencies     │  │  │
 │  │  └─────────────────────────────────────┘  │  │
 │  └───────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────┘
@@ -33,9 +34,9 @@ Pure business logic. Python stdlib + NumPy (`math`, `datetime`, `dataclasses`,
 `enum`, `typing`, `numpy`). Enforced by purity tests that parse AST and reject
 any imports beyond stdlib and NumPy.
 
-### Module categories (76 modules)
+### Module categories (82 modules)
 
-**MIT core (10 modules)**:
+**MIT core (11 modules)**:
 
 | Module | Purpose |
 |--------|---------|
@@ -49,8 +50,9 @@ any imports beyond stdlib and NumPy.
 | `observation` | Topocentric azimuth/elevation/range |
 | `omm` | CelesTrak OMM record parsing |
 | `serialization` | Simulation format (Y/Z swap, precision) |
+| `ccsds_contracts` | CCSDS envelope contract definitions |
 
-**Commercial modules (66 modules)** — free for personal/educational/academic use:
+**Commercial modules (71 modules)** — free for personal/educational/academic use:
 
 | Category | Modules |
 |----------|---------|
@@ -76,22 +78,38 @@ Protocol interfaces (structural typing via `Protocol`). One port per concept.
 | `SimulationReader` | Read simulation template files | `JsonSimulationReader` |
 | `SimulationWriter` | Write simulation output files | `JsonSimulationWriter` |
 | `OrbitalDataSource` | Fetch orbital elements from external sources | `CelesTrakAdapter` |
-| `SatelliteExporter` | Export satellite positions to file | `CsvSatelliteExporter`, `GeoJsonSatelliteExporter` |
+| `SatelliteExporter` | Export satellite positions to file | `CsvSatelliteExporter`, `GeoJsonSatelliteExporter`, `KmlExporter`, `BlenderExporter`, `StellariumExporter`, `CelestiaExporter`, `SpaceEngineExporter`, `KspExporter`, `UboxExporter` |
 
 ## Adapters layer
 
 External integrations. Import domain types only.
 
+**MIT core (13 adapters)**:
+
 | Adapter | Purpose |
 |---------|---------|
+| `json_io` | Simulation JSON read/write with CCSDS envelope support |
+| `enrichment` | Orbital enrichment data (altitude, period, beta angle, density, L-shell) |
 | `celestrak` | CelesTrak OMM API + SGP4 propagation |
 | `concurrent_celestrak` | Threaded SGP4 propagation for large groups |
-| `csv_exporter` | CSV export (lat/lon/alt) |
+| `csv_exporter` | CSV export (lat/lon/alt + enrichment) |
 | `geojson_exporter` | GeoJSON FeatureCollection export |
+| `kml_exporter` | KML export for Google Earth |
+| `blender_exporter` | Blender Python script export |
+| `stellarium_exporter` | TLE export for Stellarium / STK / GMAT |
+| `celestia_exporter` | Celestia .ssc catalog export |
+| `spaceengine_exporter` | SpaceEngine .sc catalog export |
+| `ksp_exporter` | KSP .sfs save file export (Kerbin scaling) |
+| `ubox_exporter` | Universe Sandbox .ubox export |
+
+**Commercial (4 adapters)**:
+
+| Adapter | Purpose |
+|---------|---------|
 | `czml_exporter` | CZML packets for CesiumJS |
 | `czml_visualization` | Advanced CZML (eclipse, ISL, fragility, hazard, etc.) |
 | `cesium_viewer` | Self-contained HTML viewer generation |
-| `viewer_server` | Interactive HTTP server with analysis dispatch |
+| `viewer_server` | Interactive HTTP server with 21 analysis dispatch types |
 
 ## Key constraints
 
@@ -106,10 +124,19 @@ External integrations. Import domain types only.
 ```
 cli.py
   └── adapters/
+        ├── json_io              → domain/serialization
+        ├── enrichment           → domain/constellation, domain/orbital_mechanics
         ├── celestrak.py         → domain/omm, domain/propagation, domain/constellation
         ├── concurrent_celestrak → adapters/celestrak
         ├── csv_exporter         → domain/constellation, domain/coordinate_frames
         ├── geojson_exporter     → domain/constellation, domain/coordinate_frames
+        ├── kml_exporter         → domain/constellation, domain/coordinate_frames
+        ├── blender_exporter     → domain/constellation
+        ├── stellarium_exporter  → domain/constellation
+        ├── celestia_exporter    → domain/constellation
+        ├── spaceengine_exporter → domain/constellation
+        ├── ksp_exporter         → domain/constellation
+        ├── ubox_exporter        → domain/constellation
         ├── czml_exporter        → domain/propagation, domain/coordinate_frames
         ├── czml_visualization   → domain/* (many analysis modules)
         ├── cesium_viewer        → (standalone HTML generation)

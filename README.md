@@ -1,6 +1,6 @@
 # Humeris
 
-[![Version](https://img.shields.io/badge/version-1.27.0-blue.svg)](packages/core/pyproject.toml) [![Python](https://img.shields.io/badge/python-3.11_%7C_3.12_%7C_3.13-blue.svg)](packages/core/pyproject.toml) [![Tests](https://img.shields.io/badge/tests-3272_passing-brightgreen.svg)](tests/) [![License](https://img.shields.io/badge/license-MIT_(core)-green.svg)](LICENSE) [![License](https://img.shields.io/badge/license-Commercial_(pro)-red.svg)](COMMERCIAL-LICENSE.md) [![Architecture](https://img.shields.io/badge/architecture-hexagonal-purple.svg)](docs/architecture.md)
+[![Version](https://img.shields.io/badge/version-1.27.0-blue.svg)](packages/core/pyproject.toml) [![Python](https://img.shields.io/badge/python-3.11_%7C_3.12_%7C_3.13-blue.svg)](packages/core/pyproject.toml) [![Tests](https://img.shields.io/badge/tests-3487_passing-brightgreen.svg)](tests/) [![License](https://img.shields.io/badge/license-MIT_(core)-green.svg)](LICENSE) [![License](https://img.shields.io/badge/license-Commercial_(pro)-red.svg)](COMMERCIAL-LICENSE.md) [![Architecture](https://img.shields.io/badge/architecture-hexagonal-purple.svg)](docs/architecture.md)
 
 A Python library for satellite constellation analysis — from generating
 Walker shells to propagating orbits, screening conjunctions, and
@@ -33,7 +33,7 @@ visualizing everything on a 3D globe. Pure Python, no compiled extensions.
 
 ```bash
 pip install humeris-core          # MIT core (constellation, propagation, coverage, export)
-pip install humeris-pro           # full suite (core + 66 analysis modules)
+pip install humeris-pro           # full suite (core + 71 analysis modules)
 ```
 
 Python 3.11, 3.12, 3.13. Linux, macOS, Windows. See
@@ -106,7 +106,7 @@ generator script by [Scott Manley](https://www.youtube.com/@scottmanley) that
 produces satellite shells for orbit simulation tools. That original script —
 Keplerian-to-Cartesian conversion, Walker phasing, and SSO band generation in
 ~175 lines of pure Python — remains the conceptual seed. The library has since
-grown into 76 domain modules covering propagation, conjunction analysis, orbit
+grown into 82 domain modules covering propagation, conjunction analysis, orbit
 design, link budgets, environmental modeling, and interactive 3D visualization.
 
 ## Credits
@@ -116,10 +116,10 @@ Manley's orbital mechanics visualizations.
 
 ## License
 
-**MIT** — the core foundation (10 domain modules, 13 adapters, CLI).
+**MIT** — the core foundation (11 domain modules, 13 adapters, CLI).
 See [LICENSE](LICENSE).
 
-**Commercial** — 66 extended analysis modules and the interactive viewer.
+**Commercial** — 71 extended analysis modules and the interactive viewer.
 Free for personal, educational, and academic use. Commercial use requires
 a paid license. See [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md) and
 [Licensing](docs/licensing.md) for details.

@@ -180,7 +180,8 @@ Internal params (prefixed with `_`) can override default configs:
 
 ```python
 from datetime import datetime, timezone
-from humeris import ShellConfig, generate_walker_shell, derive_orbital_state
+from humeris.domain.constellation import ShellConfig, generate_walker_shell
+from humeris.domain.propagation import derive_orbital_state
 from humeris.adapters.viewer_server import LayerManager, create_viewer_server
 
 epoch = datetime.now(tz=timezone.utc)

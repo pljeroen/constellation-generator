@@ -113,10 +113,11 @@ Add an analysis layer derived from an existing constellation.
 }
 ```
 
-**Analysis types**: `eclipse`, `coverage`, `sensor`, `isl`, `fragility`,
+**Analysis types** (21): `eclipse`, `coverage`, `sensor`, `isl`, `fragility`,
 `hazard`, `network_eclipse`, `coverage_connectivity`, `ground_track`,
 `conjunction`, `precession`, `kessler_heatmap`, `conjunction_hazard`,
-`ground_station`.
+`ground_station`, `dop_grid`, `radiation`, `beta_angle`, `deorbit`,
+`station_keeping`, `cascade_sir`, `relative_motion`, `maintenance`.
 
 See [Viewer Server](viewer-server.md) for default parameters per type.
 

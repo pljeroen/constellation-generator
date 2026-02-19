@@ -19,7 +19,7 @@ pip install humeris-core
 # With live CelesTrak / SGP4 support
 pip install "humeris-core[live]"
 
-# Full suite (core + 66 commercial analysis modules)
+# Full suite (core + 71 commercial analysis modules)
 pip install humeris-pro
 ```
 
@@ -94,7 +94,7 @@ shells and live ISS data. See [Viewer Server](viewer-server.md) for details.
 ### Run tests
 
 ```bash
-pytest                          # 3272 tests, all offline
+pytest                          # 3487 tests, all offline
 pytest tests/test_live_data.py  # live CelesTrak (requires network)
 ```
 

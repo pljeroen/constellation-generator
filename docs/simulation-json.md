@@ -47,7 +47,7 @@ to the `Entities` array. Each satellite entity gets:
 | Field | Source | Example |
 |-------|--------|---------|
 | `Id` | Sequential from `--base-id` (default 100) | `100` |
-| `Name` | Generated satellite name | `"LEO-Shell500-P00-S00"` |
+| `Name` | Generated satellite name | `"LEO-Shell500-Plane1-Sat1"` |
 | `Position` | ECI position with Y/Z swap (meters) | `"6878137.000;0.000;0.000"` |
 | `Velocity` | ECI velocity with Y/Z swap (m/s) | `"0.000000;7612.654321;0.000000"` |
 
@@ -74,9 +74,9 @@ Synthetic Walker shell satellites are named:
 {shell_name}-Plane{plane_number}-Sat{sat_number}
 ```
 
-where plane and satellite numbers are 1-indexed.
+Plane and satellite numbers are 1-indexed.
 
-Example: `LEO-Shell500-Plane3-Sat17` (shell "LEO-Shell500", plane 3, satellite 17).
+Example: `LEO-Shell500-Plane3-Sat17` (shell "LEO-Shell500", 3rd plane, 17th satellite in that plane).
 
 CelesTrak satellites keep their catalog name (e.g. `ISS (ZARYA)`,
 `GPS BIIR-2 (PRN 13)`).
@@ -111,8 +111,8 @@ humeris -i template.json -o output.json --base-id 100
   "Entities": [
     {"Id": 0, "Name": "Earth", "Position": "0;0;0", "Velocity": "0;0;0"},
     {"Id": 1, "Name": "Satellite", "Position": "0;0;0", "Velocity": "0;0;0", "Mass": 250},
-    {"Id": 100, "Name": "LEO-Shell500-P00-S00", "Position": "6878137.000;0.000;0.000", "Velocity": "0.000000;7612.654321;0.000000", "Mass": 250},
-    {"Id": 101, "Name": "LEO-Shell500-P00-S01", "Position": "6431234.567;2345678.901;1234567.890", "Velocity": "-1234.567890;7012.345678;2345.678901", "Mass": 250}
+    {"Id": 100, "Name": "LEO-Shell500-Plane1-Sat1", "Position": "6878137.000;0.000;0.000", "Velocity": "0.000000;7612.654321;0.000000", "Mass": 250},
+    {"Id": 101, "Name": "LEO-Shell500-Plane1-Sat2", "Position": "6431234.567;2345678.901;1234567.890", "Velocity": "-1234.567890;7012.345678;2345.678901", "Mass": 250}
   ]
 }
 ```

@@ -28,7 +28,7 @@ files (`version.ini`, `info.json`, `ui-state.json`).
 ### Basic export
 
 ```python
-from humeris import ShellConfig, generate_walker_shell
+from humeris.domain.constellation import ShellConfig, generate_walker_shell
 from humeris.adapters.ubox_exporter import UboxExporter
 from datetime import datetime, timezone
 
@@ -346,7 +346,7 @@ All exporters accept any `list[Satellite]`. Combine synthetic and live
 data, or filter by analysis results:
 
 ```python
-from humeris import generate_walker_shell, ShellConfig
+from humeris.domain.constellation import ShellConfig, generate_walker_shell
 from humeris.adapters.celestrak import CelesTrakAdapter
 from humeris.adapters.ubox_exporter import UboxExporter
 from humeris.adapters.spaceengine_exporter import SpaceEngineExporter

@@ -12,8 +12,8 @@ per plane.
 
 ```python
 from datetime import datetime, timedelta, timezone
-from humeris import (
-    generate_walker_configs, run_walker_trade_study, pareto_front_indices
+from humeris.domain.trade_study import (
+    generate_walker_configs, run_walker_trade_study, pareto_front_indices,
 )
 
 # Define the design space — explicit values for each parameter
@@ -59,7 +59,7 @@ ground station planning, or mission planning software.
 ### CSV export
 
 ```python
-from humeris import ShellConfig, generate_walker_shell
+from humeris.domain.constellation import ShellConfig, generate_walker_shell
 from humeris.adapters.csv_exporter import CsvSatelliteExporter
 
 best_shell = ShellConfig(
@@ -85,9 +85,9 @@ The CSV contains state vectors for each satellite:
 ### GeoJSON export
 
 ```python
-from humeris.adapters.geojson_exporter import GeoJsonExporter
+from humeris.adapters.geojson_exporter import GeoJsonSatelliteExporter
 
-GeoJsonExporter().export(sats, "optimized_constellation.geojson")
+GeoJsonSatelliteExporter().export(sats, "optimized_constellation.geojson")
 ```
 
 Opens directly in QGIS, Mapbox, or any GIS tool for geographic analysis.
@@ -104,10 +104,9 @@ Screen your constellation against itself (or other objects) for close
 approaches. Essential for regulatory filings and operational safety.
 
 ```python
-from humeris import (
-    ShellConfig, generate_walker_shell,
-    derive_orbital_state, screen_conjunctions,
-)
+from humeris.domain.constellation import ShellConfig, generate_walker_shell
+from humeris.domain.propagation import derive_orbital_state
+from humeris.domain.conjunction import screen_conjunctions
 
 shell = ShellConfig(
     altitude_km=550, inclination_deg=53,

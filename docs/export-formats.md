@@ -32,6 +32,12 @@ count = exporter.export(satellites, "satellites.csv")
 | `sat_index` | int | Satellite index within plane |
 | `raan_deg` | float | Right ascension of ascending node (degrees) |
 | `true_anomaly_deg` | float | True anomaly (degrees) |
+| `altitude_km` | float | Orbital altitude (km) |
+| `inclination_deg` | float | Orbital inclination (degrees) |
+| `orbital_period_min` | float | Orbital period (minutes) |
+| `beta_angle_deg` | float | Solar beta angle (degrees) |
+| `atmospheric_density_kg_m3` | float | Atmospheric density at altitude (kg/m³) |
+| `l_shell` | float | McIlwain L-shell parameter |
 
 ---
 
@@ -106,13 +112,13 @@ packets = snapshot_packets(states, epoch)
 write_czml(packets, "snapshot.czml")
 
 # Ground track polyline
-from humeris import compute_ground_track
+from humeris.domain.ground_track import compute_ground_track
 track = compute_ground_track(satellite, epoch, duration, step)
 packets = ground_track_packets(track)
 write_czml(packets, "ground_track.czml")
 
 # Coverage heatmap
-from humeris import compute_coverage_snapshot
+from humeris.domain.coverage import compute_coverage_snapshot
 grid = compute_coverage_snapshot(states, epoch, lat_step_deg=5, lon_step_deg=5)
 packets = coverage_packets(grid, lat_step_deg=5, lon_step_deg=5)
 write_czml(packets, "coverage.czml")
@@ -193,4 +199,4 @@ humeris -i template.json -o output.json
 ```
 
 The format preserves all template entities and adds generated satellites
-with sequential IDs from `--base-id` (default 0).
+with sequential IDs from `--base-id` (default 100).

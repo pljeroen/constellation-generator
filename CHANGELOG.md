@@ -4,6 +4,44 @@ All notable changes to this project are documented here.
 
 ## [1.27.0] - 2026-02-17
 
+### Hardening and polish (post-release)
+
+- **RK4 particle filter** — Replaced forward Euler integrator in orbit determination
+  particle filter with 4th-order Runge-Kutta (`_rk4_two_body()`). O(dt⁴) accuracy
+  vs O(dt) for orbit propagation steps.
+- **Koopman DMD stability diagnostic** — `KoopmanModel` and `KoopmanPrediction`
+  gain `is_stable` field. `fit_koopman_model()` computes max eigenvalue magnitude;
+  `predict_koopman()` emits `logging.warning` when model is unstable (|λ| > 1).
+- **Power iteration convergence** — `_power_iteration()` in `kessler_heatmap.py`
+  returns `(vector, converged, iterations)` tuple instead of bare array,
+  exposing convergence state to callers.
+- **J2000 epoch fallback warnings** — CSV, GeoJSON, Celestia, and KML exporters
+  emit `logging.warning` when no epoch is provided and J2000 fallback is used.
+  Deduplicated per export call. Non-breaking for existing users.
+- **Force model guards** — Numerical propagation returns zero acceleration for
+  degenerate position vectors (r < 1e-3 m). Prevents NaN in edge cases.
+- **URL encoding** — CelesTrak adapter URL-encodes satellite names and group
+  identifiers.
+- **TLE overflow** — Stellarium exporter clamps mean motion and RAAN to TLE
+  field width limits.
+- **NRLMSISE-00 clamp** — Density computation clamps altitude and solar indices
+  to model validity ranges.
+- **Lifetime SMA floor** — Orbit lifetime computation floors semi-major axis at
+  Earth radius to prevent negative altitude in decay profile.
+- **Name sanitization** — Blender, Celestia, KML, KSP, SpaceEngine, and
+  Stellarium exporters sanitize satellite names for format-specific character
+  restrictions.
+- **Division-by-zero guards** — Additional guards in conjunction screening,
+  eclipse fraction, station-keeping budget, and numerical propagation.
+- **Trailing newline consistency** — All exporters ensure files end with a
+  trailing newline.
+- **CLI test coverage** — Tests for file-not-found, port-in-use, zero-satellite,
+  and argument validation paths.
+- **API contract validation** — 15 tests verifying API schema compatibility and
+  schema diff generation.
+
+**Tests**: 3487 passing (+215 from initial 1.27.0 release)
+
 ### Comparative validation expansion
 
 - Added expanded GMAT-vs-Humeris comparative matrix tests covering:
