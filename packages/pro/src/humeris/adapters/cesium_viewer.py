@@ -504,6 +504,33 @@ def generate_interactive_html(
         .layer-metrics .metric-row .metric-val {{
             font-family: monospace; color: rgba(80,200,255,0.9);
         }}
+        #satTable {{
+            position: fixed; bottom: 0; left: 280px; right: 0;
+            max-height: 35vh; overflow: auto;
+            background: rgba(20,25,35,0.95); color: #fff;
+            font-size: 11px; display: none; z-index: 100;
+            border-top: 1px solid rgba(80,160,255,0.3);
+        }}
+        #satTable.visible {{ display: block; }}
+        #satTable table {{ width: 100%; border-collapse: collapse; }}
+        #satTable th {{
+            position: sticky; top: 0; background: rgba(30,35,50,0.98);
+            padding: 4px 8px; cursor: pointer; text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.15);
+            user-select: none; white-space: nowrap;
+        }}
+        #satTable th:hover {{ background: rgba(80,160,255,0.2); }}
+        #satTable td {{ padding: 3px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }}
+        #satTable tr:hover {{ background: rgba(80,160,255,0.15); cursor: pointer; }}
+        #satTable .sort-asc::after {{ content: " \\25B2"; font-size: 8px; }}
+        #satTable .sort-desc::after {{ content: " \\25BC"; font-size: 8px; }}
+        #satTableToggle {{
+            position: fixed; bottom: 8px; right: 8px; z-index: 101;
+            background: rgba(30,40,60,0.9); color: #fff;
+            border: 1px solid rgba(80,160,255,0.3); border-radius: 4px;
+            padding: 4px 10px; cursor: pointer; font-size: 11px;
+        }}
+        #satTableToggle:hover {{ background: rgba(80,160,255,0.3); }}
         @media (max-width: 1024px) {{
             #sidePanel {{ width: 220px; font-size: 11px; }}
             #sidePanel.collapsed {{ display: none; }}
@@ -520,6 +547,8 @@ def generate_interactive_html(
     <div id="loadingIndicator"><span class="spinner"></span><span id="loadingText">Loading...</span><button id="cancelBtn" class="btn btn-sm btn-danger" style="margin-left:12px" onclick="cancelRequest()">Cancel</button></div>
     <div id="toastContainer"></div>
     <button id="panelToggle" onclick="togglePanel()" title="Toggle panel">&#9776;</button>
+    <button id="satTableToggle" onclick="toggleSatTable()">Table</button>
+    <div id="satTable"></div>
     <div id="colorLegend"></div>
     <div id="sidePanel">
         <!-- Add Layer Section -->
@@ -765,6 +794,88 @@ def generate_interactive_html(
             }} else {{
                 panel.style.display = "none";
                 btn.style.display = "block";
+            }}
+        }}
+
+        // --- Satellite data table (APP-03) ---
+        var satTableData = null;
+        var satTableSort = {{col: null, asc: true}};
+        var satTableLayerId = null;
+
+        function toggleSatTable() {{
+            var tbl = document.getElementById("satTable");
+            tbl.classList.toggle("visible");
+            if (tbl.classList.contains("visible") && !satTableData) {{
+                // Load table for first constellation layer
+                apiGet("/api/state").then(function(state) {{
+                    var constLayer = state.layers.find(function(l) {{ return l.category === "Constellation"; }});
+                    if (constLayer) loadSatTable(constLayer.layer_id);
+                }});
+            }}
+        }}
+
+        function loadSatTable(layerId) {{
+            satTableLayerId = layerId;
+            apiGet("/api/table/" + layerId).then(function(data) {{
+                satTableData = data;
+                satTableSort = {{col: null, asc: true}};
+                renderSatTable();
+            }}).catch(function(e) {{
+                document.getElementById("satTable").innerHTML = '<div style="padding:8px;color:rgba(255,100,100,0.8)">Error loading table</div>';
+            }});
+        }}
+
+        function renderSatTable() {{
+            if (!satTableData) return;
+            var cols = satTableData.columns;
+            var rows = satTableData.rows.slice();
+            if (satTableSort.col !== null) {{
+                var sc = satTableSort.col;
+                var asc = satTableSort.asc;
+                rows.sort(function(a, b) {{
+                    var va = a[sc], vb = b[sc];
+                    if (typeof va === "string") return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+                    return asc ? va - vb : vb - va;
+                }});
+            }}
+            var html = '<table><thead><tr>';
+            cols.forEach(function(c) {{
+                var cls = "";
+                if (satTableSort.col === c) cls = satTableSort.asc ? "sort-asc" : "sort-desc";
+                html += '<th class="' + cls + '" onclick="sortSatTable(\'' + c + '\')">' + c.replace(/_/g, " ") + '</th>';
+            }});
+            html += '</tr></thead><tbody>';
+            rows.forEach(function(row, idx) {{
+                html += '<tr onclick="flyToSat(' + idx + ')">';
+                cols.forEach(function(c) {{
+                    html += '<td>' + row[c] + '</td>';
+                }});
+                html += '</tr>';
+            }});
+            html += '</tbody></table>';
+            document.getElementById("satTable").innerHTML = html;
+        }}
+
+        function sortSatTable(col) {{
+            if (satTableSort.col === col) {{
+                satTableSort.asc = !satTableSort.asc;
+            }} else {{
+                satTableSort.col = col;
+                satTableSort.asc = true;
+            }}
+            renderSatTable();
+        }}
+
+        function flyToSat(idx) {{
+            if (!satTableLayerId) return;
+            var entityId = satTableLayerId + "-" + idx;
+            var ds = viewer.dataSources;
+            for (var i = 0; i < ds.length; i++) {{
+                var entity = ds.get(i).entities.getById(entityId);
+                if (entity) {{
+                    viewer.flyTo(entity, {{duration: 1.5}});
+                    return;
+                }}
             }}
         }}
 
@@ -1036,6 +1147,7 @@ def generate_interactive_html(
                 return Promise.all(reloads);
             }}).then(function() {{
                 rebuildPanel();
+                if (satTableLayerId === layerId) loadSatTable(layerId);
                 hideLoading();
                 showToast("Constellation reconfigured", "success");
             }}).catch(function(e) {{

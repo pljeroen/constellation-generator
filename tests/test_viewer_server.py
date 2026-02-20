@@ -2870,3 +2870,96 @@ class TestLayerMetrics:
         layer_info = state["layers"][0]
         assert "metrics" in layer_info
         assert layer_info["metrics"]["min_beta_deg"] is not None
+
+
+# ---------------------------------------------------------------------------
+# APP-03: Satellite data table
+# ---------------------------------------------------------------------------
+
+
+class TestSatelliteTable:
+    """Tests for satellite data table API."""
+
+    def test_table_returns_rows_for_walker_layer(self):
+        """Table endpoint returns one row per satellite."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=2, n_sats=3)
+        lid = mgr.add_layer(
+            name="Constellation:Walker",
+            category="Constellation",
+            layer_type="walker",
+            states=states,
+            params={"altitude_km": 550, "inclination_deg": 53, "num_planes": 2, "sats_per_plane": 3},
+            sat_names=[f"Sat-{i}" for i in range(6)],
+        )
+        table = mgr.get_satellite_table(lid)
+        assert len(table["rows"]) == 6
+        assert table["columns"] == [
+            "name", "plane", "altitude_km", "inclination_deg",
+            "raan_deg", "period_min", "beta_angle_deg", "eclipse_pct",
+        ]
+
+    def test_table_row_has_correct_fields(self):
+        """Each row has all required fields with proper types."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=1, n_sats=2)
+        lid = mgr.add_layer(
+            name="Constellation:Walker",
+            category="Constellation",
+            layer_type="walker",
+            states=states,
+            params={"altitude_km": 550, "inclination_deg": 53, "num_planes": 1, "sats_per_plane": 2},
+            sat_names=["Alpha", "Bravo"],
+        )
+        table = mgr.get_satellite_table(lid)
+        row = table["rows"][0]
+        assert row["name"] == "Alpha"
+        assert isinstance(row["altitude_km"], float)
+        assert isinstance(row["inclination_deg"], float)
+        assert isinstance(row["raan_deg"], float)
+        assert isinstance(row["period_min"], float)
+        assert isinstance(row["beta_angle_deg"], float)
+        assert isinstance(row["eclipse_pct"], float)
+
+    def test_table_nonexistent_layer_raises(self):
+        """Requesting table for missing layer raises KeyError."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        with pytest.raises(KeyError):
+            mgr.get_satellite_table("nonexistent")
+
+    def test_table_without_sat_names_uses_fallback(self):
+        """When sat_names is None, rows use Sat-N naming."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=1, n_sats=2)
+        lid = mgr.add_layer(
+            name="Constellation:Walker",
+            category="Constellation",
+            layer_type="walker",
+            states=states,
+            params={"altitude_km": 550, "inclination_deg": 53, "num_planes": 1, "sats_per_plane": 2},
+        )
+        table = mgr.get_satellite_table(lid)
+        assert table["rows"][0]["name"] == "Sat-0"
+        assert table["rows"][1]["name"] == "Sat-1"
+
+    def test_table_plane_assignment(self):
+        """Plane number is correctly assigned based on num_planes."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=2, n_sats=2)
+        lid = mgr.add_layer(
+            name="Constellation:Walker",
+            category="Constellation",
+            layer_type="walker",
+            states=states,
+            params={"altitude_km": 550, "inclination_deg": 53, "num_planes": 2, "sats_per_plane": 2},
+            sat_names=[f"S-{i}" for i in range(4)],
+        )
+        table = mgr.get_satellite_table(lid)
+        planes = [r["plane"] for r in table["rows"]]
+        # First 2 sats in plane 0, next 2 in plane 1
+        assert planes == [0, 0, 1, 1]

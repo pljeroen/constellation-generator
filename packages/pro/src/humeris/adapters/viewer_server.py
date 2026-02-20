@@ -931,6 +931,57 @@ class LayerManager:
                     self.layers[dep_id].sat_names = sat_names
                     self.layers[dep_id].czml = dep_czml
 
+    def get_satellite_table(self, layer_id: str) -> dict[str, Any]:
+        """Return tabular per-satellite data for a constellation layer.
+
+        Columns: name, plane, altitude_km, inclination_deg, raan_deg,
+        period_min, beta_angle_deg, eclipse_pct.
+
+        Raises KeyError if layer_id not found.
+        """
+        import math
+        with self._lock:
+            layer = self.layers[layer_id]
+            states = layer.states or []
+            names = layer.sat_names
+            params = layer.params
+            sats_per_plane = params.get("sats_per_plane", len(states))
+            rows = []
+            for idx, state in enumerate(states):
+                name = names[idx] if names and idx < len(names) else f"Sat-{idx}"
+                alt_km = (state.semi_major_axis_m - OrbitalConstants.R_EARTH) / 1000.0
+                inc_deg = math.degrees(state.inclination_rad)
+                raan_deg = math.degrees(state.raan_rad)
+                period_s = 2.0 * math.pi / state.mean_motion_rad_s if state.mean_motion_rad_s > 0 else 0.0
+                period_min = period_s / 60.0
+                plane = idx // sats_per_plane if sats_per_plane > 0 else 0
+                try:
+                    beta_deg = compute_beta_angle(state.raan_rad, state.inclination_rad, self.epoch)
+                except Exception:
+                    beta_deg = 0.0
+                try:
+                    es = compute_eclipse_statistics(state, self.epoch, _DEFAULT_DURATION, _DEFAULT_STEP)
+                    eclipse_pct = round(es.eclipse_fraction * 100.0, 1)
+                except Exception:
+                    eclipse_pct = 0.0
+                rows.append({
+                    "name": name,
+                    "plane": plane,
+                    "altitude_km": round(alt_km, 2),
+                    "inclination_deg": round(inc_deg, 2),
+                    "raan_deg": round(raan_deg, 2),
+                    "period_min": round(period_min, 2),
+                    "beta_angle_deg": round(beta_deg, 1),
+                    "eclipse_pct": eclipse_pct,
+                })
+            return {
+                "columns": [
+                    "name", "plane", "altitude_km", "inclination_deg",
+                    "raan_deg", "period_min", "beta_angle_deg", "eclipse_pct",
+                ],
+                "rows": rows,
+            }
+
     def save_session(self) -> dict[str, Any]:
         """Serialize current session state for save/restore."""
         with self._lock:
@@ -1288,6 +1339,14 @@ class ConstellationHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.end_headers()
             self.wfile.write(json.dumps(merged, indent=2).encode())
+            return
+
+        if base == "/api/table" and param:
+            try:
+                table = self.layer_manager.get_satellite_table(param)
+                self._json_response(table)
+            except KeyError:
+                self._error_response(404, f"Layer not found: {param}")
             return
 
         self._error_response(404, "Not found")
