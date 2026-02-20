@@ -569,6 +569,46 @@ class TestSnapshotPackets:
         assert "clock" not in pkts[0]
 
 
+class TestSatNamesSnapshotPackets:
+    """SAT-NAME-01: snapshot_packets must accept optional sat_names."""
+
+    def test_custom_sat_names_in_snapshot(self, orbital_states, epoch):
+        """When sat_names provided, snapshot packet names use them."""
+        names = [f"ISS-{i}" for i in range(len(orbital_states))]
+        pkts = snapshot_packets(orbital_states, epoch, sat_names=names)
+        for idx, pkt in enumerate(pkts[1:]):
+            assert pkt["name"] == names[idx]
+
+    def test_default_sat_names_in_snapshot(self, orbital_states, epoch):
+        """Without sat_names, snapshot falls back to Sat-{idx}."""
+        pkts = snapshot_packets(orbital_states, epoch)
+        for idx, pkt in enumerate(pkts[1:]):
+            assert pkt["name"] == f"Sat-{idx}"
+
+
+class TestSatNamesConstellationPackets:
+    """SAT-NAME-01: constellation_packets must accept optional sat_names."""
+
+    def test_custom_sat_names_in_constellation(self, orbital_states, epoch):
+        """When sat_names provided, constellation packet names and labels use them."""
+        names = [f"STARLINK-{i}" for i in range(len(orbital_states))]
+        pkts = constellation_packets(
+            orbital_states, epoch, timedelta(hours=2), timedelta(seconds=60),
+            sat_names=names,
+        )
+        for idx, pkt in enumerate(pkts[1:]):
+            assert pkt["name"] == names[idx]
+            assert pkt["label"]["text"] == names[idx]
+
+    def test_default_sat_names_in_constellation(self, orbital_states, epoch):
+        """Without sat_names, constellation falls back to Sat-{idx}."""
+        pkts = constellation_packets(
+            orbital_states, epoch, timedelta(hours=2), timedelta(seconds=60),
+        )
+        for idx, pkt in enumerate(pkts[1:]):
+            assert pkt["name"] == f"Sat-{idx}"
+
+
 class TestCzmlExporterPurity:
     """Adapter purity: czml_exporter may use stdlib json/math/datetime but no other external deps."""
 

@@ -79,6 +79,7 @@ def eclipse_snapshot_packets(
     states: list[OrbitalState],
     epoch: datetime,
     name: str = "Eclipse State",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Static snapshot colored by eclipse state at epoch.
 
@@ -120,9 +121,10 @@ def eclipse_snapshot_packets(
         else:
             color = _SUNLIT_COLOR
 
+        sat_name = sat_names[idx] if sat_names else f"Sat-{idx}"
         pkt: dict = {
             "id": f"eclipse-snap-{idx}",
-            "name": f"Sat-{idx}",
+            "name": sat_name,
             "position": {
                 "cartographicDegrees": [lon_deg, lat_deg, alt_m],
             },
@@ -197,6 +199,7 @@ def eclipse_constellation_packets(
     duration: timedelta,
     step: timedelta,
     name: str = "Eclipse Constellation",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Constellation packets with eclipse-aware satellite coloring.
 
@@ -254,9 +257,10 @@ def eclipse_constellation_packets(
 
         path_color = [plane_color[0], plane_color[1], plane_color[2], 128]
 
+        sat_name = sat_names[idx] if sat_names else f"Sat-{idx}"
         pkt: dict = {
             "id": f"satellite-{idx}",
-            "name": f"Sat-{idx}",
+            "name": sat_name,
             "description": _satellite_description(state, epoch),
             "position": {
                 "epoch": _iso(epoch),
@@ -269,7 +273,7 @@ def eclipse_constellation_packets(
                 "color": color_intervals,
             },
             "label": {
-                "text": f"Sat-{idx}",
+                "text": sat_name,
                 "font": "11pt sans-serif",
                 "fillColor": {"rgba": [255, 255, 255, 200]},
                 "outlineWidth": 2,
@@ -301,6 +305,7 @@ def sensor_footprint_packets(
     step: timedelta,
     sensor: SensorConfig,
     name: str = "Sensor Footprint",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Sensor FOV footprints sweeping the ground as satellites orbit.
 
@@ -346,7 +351,7 @@ def sensor_footprint_packets(
 
         pkt: dict = {
             "id": f"footprint-{idx}",
-            "name": f"Footprint Sat-{idx}",
+            "name": f"Footprint {sat_names[idx] if sat_names else f'Sat-{idx}'}",
             "position": {
                 "epoch": _iso(epoch),
                 "cartographicDegrees": coords,
@@ -377,6 +382,7 @@ def ground_station_packets(
     step: timedelta,
     min_elevation_deg: float = 10.0,
     name: str = "Ground Station",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Ground station marker with visibility circle and access event tracks.
 
@@ -478,7 +484,7 @@ def ground_station_packets(
                 num_access_pts = len(access_coords) // 4
                 access_pkt: dict = {
                     "id": f"access-{idx}-{w_idx}",
-                    "name": f"Access: Sat-{idx} Pass {w_idx + 1}",
+                    "name": f"Access: {sat_names[idx] if sat_names else f'Sat-{idx}'} Pass {w_idx + 1}",
                     "availability": f"{_iso(window.rise_time)}/{_iso(window.set_time)}",
                     "position": {
                         "epoch": _iso(epoch),
@@ -732,6 +738,7 @@ def precession_constellation_packets(
     duration: timedelta,
     step: timedelta,
     name: str = "J2 Precession",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Constellation with J2 RAAN precession over long duration.
 
@@ -744,12 +751,13 @@ def precession_constellation_packets(
         duration: Total duration (typically days to weeks).
         step: Time step.
         name: Document name.
+        sat_names: Optional per-satellite display names.
 
     Returns:
         List of CZML packets with J2-precessed orbits.
     """
     states = [derive_orbital_state(s, epoch, include_j2=True) for s in satellites]
-    return constellation_packets(states, epoch, duration, step, name=name)
+    return constellation_packets(states, epoch, duration, step, name=name, sat_names=sat_names)
 
 
 def _snr_color(snr_db: float, min_snr: float = 0.0, max_snr: float = 30.0) -> list[int]:
@@ -787,6 +795,7 @@ def isl_topology_packets(
     step_s: float,
     max_range_km: float = 5000.0,
     name: str = "ISL Topology",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """ISL topology visualization with SNR-colored polylines.
 
@@ -828,9 +837,10 @@ def isl_topology_packets(
             coords.extend([t_offset, lon_deg, lat_deg, alt_m])
 
         plane_color = _PLANE_COLORS[plane_indices[idx] % len(_PLANE_COLORS)]
+        sat_name = sat_names[idx] if sat_names else f"Sat-{idx}"
         packets.append({
             "id": f"isl-sat-{idx}",
-            "name": f"Sat-{idx}",
+            "name": sat_name,
             "position": {
                 "epoch": _iso(epoch),
                 "cartographicDegrees": coords,
@@ -882,6 +892,7 @@ def fragility_constellation_packets(
     lat_deg: float = 0.0,
     lon_deg: float = 0.0,
     name: str = "Spectral Fragility",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Constellation colored by spectral fragility.
 
@@ -932,9 +943,10 @@ def fragility_constellation_packets(
             _, _, lat_d, lon_d, alt_m = _propagate_geodetic(state, target_time)
             coords.extend([t_offset, lon_d, lat_d, alt_m])
 
+        sat_name = sat_names[idx] if sat_names else f"Sat-{idx}"
         packets.append({
             "id": f"frag-sat-{idx}",
-            "name": f"Sat-{idx} (fragility)",
+            "name": f"{sat_name} (fragility)",
             "position": {
                 "epoch": _iso(epoch),
                 "cartographicDegrees": coords,
@@ -957,6 +969,7 @@ def hazard_evolution_packets(
     duration_s: float,
     step_s: float,
     name: str = "Hazard Evolution",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Satellites colored by hazard rate / survival fraction.
 
@@ -1037,9 +1050,10 @@ def hazard_evolution_packets(
                 "rgba": color,
             })
 
+        sat_name = sat_names[idx] if sat_names else f"Sat-{idx}"
         packets.append({
             "id": f"hazard-sat-{idx}",
-            "name": f"Sat-{idx} (hazard)",
+            "name": f"{sat_name} (hazard)",
             "position": {
                 "epoch": _iso(epoch),
                 "cartographicDegrees": coords,
@@ -1164,6 +1178,7 @@ def network_eclipse_packets(
     step_s: float,
     max_range_km: float = 5000.0,
     name: str = "Network Eclipse",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """ISL polylines with eclipse-dependent color.
 
@@ -1201,9 +1216,10 @@ def network_eclipse_packets(
             _, _, lat_deg, lon_deg, alt_m = _propagate_geodetic(state, target_time)
             coords.extend([t_offset, lon_deg, lat_deg, alt_m])
 
+        sat_name = sat_names[idx] if sat_names else f"Sat-{idx}"
         packets.append({
             "id": f"netecl-sat-{idx}",
-            "name": f"Sat-{idx}",
+            "name": sat_name,
             "position": {
                 "epoch": _iso(epoch),
                 "cartographicDegrees": coords,
@@ -1281,6 +1297,7 @@ def kessler_heatmap_packets(
     duration: timedelta,
     step: timedelta,
     name: str = "Kessler Heatmap",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Satellites colored by Kessler cascade risk level.
 
@@ -1333,9 +1350,10 @@ def kessler_heatmap_packets(
 
         color = _KESSLER_RISK_COLORS.get(sat_risks[idx], _KESSLER_RISK_COLORS["low"])
 
+        sat_name = sat_names[idx] if sat_names else f"Sat-{idx}"
         packets.append({
             "id": f"kessler-sat-{idx}",
-            "name": f"Sat-{idx} ({sat_risks[idx]})",
+            "name": f"{sat_name} ({sat_risks[idx]})",
             "position": {
                 "epoch": _iso(epoch),
                 "cartographicDegrees": coords,
@@ -1367,6 +1385,7 @@ def conjunction_hazard_packets(
     step: timedelta,
     screening_threshold_m: float = 100_000.0,
     name: str = "Conjunction Hazard",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Constellation with conjunction events colored by hazard level.
 
@@ -1404,9 +1423,10 @@ def conjunction_hazard_packets(
             _, _, lat_deg, lon_deg, alt_m = _propagate_geodetic(state, target_time)
             coords.extend([t_offset, lon_deg, lat_deg, alt_m])
 
+        sat_name = sat_names[idx] if sat_names else f"Sat-{idx}"
         packets.append({
             "id": f"hazconj-sat-{idx}",
-            "name": f"Sat-{idx}",
+            "name": sat_name,
             "position": {
                 "epoch": _iso(epoch),
                 "cartographicDegrees": coords,
@@ -1420,15 +1440,15 @@ def conjunction_hazard_packets(
         })
 
     # Screen for conjunctions
-    sat_names = [f"Sat-{i}" for i in range(len(states))]
+    screening_names = sat_names if sat_names else [f"Sat-{i}" for i in range(len(states))]
     screening_step = timedelta(seconds=60)
     candidates = screen_conjunctions(
-        states, sat_names, epoch, duration, screening_step, screening_threshold_m,
+        states, screening_names, epoch, duration, screening_step, screening_threshold_m,
     )
 
     # Assess and classify top candidates
     for c_idx, (i, j, tca, dist_m) in enumerate(candidates[:20]):
-        event = assess_conjunction(states[i], sat_names[i], states[j], sat_names[j], tca)
+        event = assess_conjunction(states[i], screening_names[i], states[j], screening_names[j], tca)
         hazard = classify_hazard(event)
         color = _HAZARD_LEVEL_COLORS.get(hazard, _HAZARD_LEVEL_COLORS[HazardLevel.ROUTINE])
 
@@ -1439,7 +1459,7 @@ def conjunction_hazard_packets(
 
         packets.append({
             "id": f"hazconj-line-{c_idx}",
-            "name": f"{hazard.value}: Sat-{i} - Sat-{j} ({dist_m:.0f}m)",
+            "name": f"{hazard.value}: {screening_names[i]} - {screening_names[j]} ({dist_m:.0f}m)",
             "availability": f"{_iso(avail_start)}/{_iso(avail_end)}",
             "polyline": {
                 "positions": {
@@ -1540,6 +1560,7 @@ def radiation_coloring_packets(
     duration: timedelta,
     step: timedelta,
     name: str = "Radiation",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Animated satellite coloring by McIlwain L-shell radiation proxy.
 
@@ -1583,9 +1604,10 @@ def radiation_coloring_packets(
                 "interval": f"{_iso(step_times[i])}/{_iso(t_end)}", "rgba": color,
             })
 
+        sat_name = sat_names[idx] if sat_names else f"Sat-{idx}"
         packets.append({
             "id": f"rad-sat-{idx}",
-            "name": f"Sat-{idx}",
+            "name": sat_name,
             "position": {
                 "epoch": _iso(epoch),
                 "cartographicDegrees": coords,
@@ -1602,6 +1624,7 @@ def beta_angle_packets(
     states: list[OrbitalState],
     epoch: datetime,
     name: str = "Beta Angle",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Snapshot coloring by orbital beta angle at epoch.
 
@@ -1641,7 +1664,7 @@ def beta_angle_packets(
 
         pkt: dict = {
             "id": f"beta-snap-{idx}",
-            "name": f"Sat-{idx} (beta={beta_deg:.1f} deg)",
+            "name": f"{sat_names[idx] if sat_names else f'Sat-{idx}'} (beta={beta_deg:.1f} deg)",
             "position": {
                 "cartographicDegrees": [lon_deg, lat_deg, alt_m],
             },
@@ -1668,6 +1691,7 @@ def deorbit_compliance_packets(
     states: list[OrbitalState],
     epoch: datetime,
     name: str = "Deorbit Compliance",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Snapshot coloring by 25-year deorbit compliance status.
 
@@ -1711,7 +1735,7 @@ def deorbit_compliance_packets(
 
         pkt: dict = {
             "id": f"deorbit-snap-{idx}",
-            "name": f"Sat-{idx} ({label_text})",
+            "name": f"{sat_names[idx] if sat_names else f'Sat-{idx}'} ({label_text})",
             "position": {
                 "cartographicDegrees": [lon_deg, lat_deg, alt_m],
             },
@@ -1740,6 +1764,7 @@ def station_keeping_packets(
     drag_config: DragConfig | None = None,
     density_func: object | None = None,
     name: str = "Station Keeping",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Snapshot coloring by annual station-keeping delta-V budget.
 
@@ -1793,7 +1818,7 @@ def station_keeping_packets(
 
         pkt: dict = {
             "id": f"sk-snap-{idx}",
-            "name": f"Sat-{idx} ({label_text})",
+            "name": f"{sat_names[idx] if sat_names else f'Sat-{idx}'} ({label_text})",
             "position": {
                 "cartographicDegrees": [lon_deg, lat_deg, alt_m],
             },
@@ -1822,6 +1847,7 @@ def cascade_evolution_packets(
     duration: timedelta,
     step: timedelta,
     name: str = "Cascade SIR",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Animated SIR cascade model evolution shown as satellite coloring.
 
@@ -1885,7 +1911,7 @@ def cascade_evolution_packets(
             for i in range(len(step_times_dt))
         ]
         packets.append({
-            "id": f"cascade-sat-{idx}", "name": f"Sat-{idx}",
+            "id": f"cascade-sat-{idx}", "name": sat_names[idx] if sat_names else f"Sat-{idx}",
             "position": {
                 "epoch": _iso(epoch), "cartographicDegrees": coords,
                 "interpolationAlgorithm": "LAGRANGE", "interpolationDegree": interp_degree,
@@ -1903,6 +1929,7 @@ def relative_motion_packets(
     duration: timedelta,
     step: timedelta,
     name: str = "Relative Motion",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Two-satellite trajectory with distance-annotated proximity polyline.
 
@@ -1926,8 +1953,10 @@ def relative_motion_packets(
         distances_km.append(math.sqrt(rel.x ** 2 + rel.y ** 2 + rel.z ** 2) / 1000.0)
 
     sat_colors = [[255, 50, 50, 255], [50, 100, 255, 255]]
+    name_a = sat_names[0] if sat_names and len(sat_names) > 0 else "Sat-A"
+    name_b = sat_names[1] if sat_names and len(sat_names) > 1 else "Sat-B"
     for sat_idx, (coords, sat_name) in enumerate(
-        [(all_coords[0], "Sat-A"), (all_coords[1], "Sat-B")],
+        [(all_coords[0], name_a), (all_coords[1], name_b)],
     ):
         color = sat_colors[sat_idx]
         packets.append({
@@ -1968,6 +1997,7 @@ def maintenance_schedule_packets(
     drag_config: DragConfig | None = None,
     density_func: object | None = None,
     name: str = "Maintenance",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Snapshot showing perturbation budget and annual dV per satellite.
 
@@ -2011,7 +2041,7 @@ def maintenance_schedule_packets(
 
         packets.append({
             "id": f"maint-snap-{idx}",
-            "name": f"Sat-{idx} ({label_text})",
+            "name": f"{sat_names[idx] if sat_names else f'Sat-{idx}'} ({label_text})",
             "position": {"cartographicDegrees": [lon_deg, lat_deg, alt_m]},
             "point": {"pixelSize": 5, "color": {"rgba": color}},
             "label": {

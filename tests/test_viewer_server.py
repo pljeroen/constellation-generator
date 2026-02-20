@@ -2102,6 +2102,132 @@ class TestLayerManagerLoadSession:
         assert result == 0
 
 
+class TestSatNamesInPipeline:
+    """SAT-NAME-01: Satellite names must thread through the CZML pipeline."""
+
+    def test_add_layer_accepts_sat_names(self):
+        """add_layer() must accept sat_names parameter and store it in LayerState."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states()
+        names = [f"SAT-{i}" for i in range(len(states))]
+        layer_id = mgr.add_layer(
+            name="Constellation:Test",
+            category="Constellation",
+            layer_type="walker",
+            states=states,
+            params={},
+            sat_names=names,
+        )
+        layer = mgr.layers[layer_id]
+        assert layer.sat_names == names
+
+    def test_sat_names_appear_in_czml_snapshot(self):
+        """Snapshot CZML packets must use provided sat_names."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=6, n_sats=20)  # >100 → snapshot mode
+        names = [f"ISS-{i}" for i in range(len(states))]
+        layer_id = mgr.add_layer(
+            name="Constellation:Named",
+            category="Constellation",
+            layer_type="walker",
+            states=states,
+            params={},
+            sat_names=names,
+        )
+        czml = mgr.layers[layer_id].czml
+        # First packet is document; satellite packets follow
+        for idx, pkt in enumerate(czml[1:]):
+            assert pkt["name"] == names[idx], f"Packet {idx} name mismatch"
+
+    def test_sat_names_appear_in_czml_animated(self):
+        """Animated CZML packets must use provided sat_names."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=2, n_sats=2)  # <=100 → animated
+        names = [f"STARLINK-{i}" for i in range(len(states))]
+        layer_id = mgr.add_layer(
+            name="Constellation:Named",
+            category="Constellation",
+            layer_type="walker",
+            states=states,
+            params={},
+            sat_names=names,
+        )
+        czml = mgr.layers[layer_id].czml
+        for idx, pkt in enumerate(czml[1:]):
+            assert pkt["name"] == names[idx], f"Packet {idx} name mismatch"
+
+    def test_sat_names_default_none(self):
+        """Without sat_names, LayerState.sat_names is None."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states()
+        layer_id = mgr.add_layer(
+            name="Test", category="Constellation",
+            layer_type="walker", states=states, params={},
+        )
+        assert mgr.layers[layer_id].sat_names is None
+
+    def test_save_session_includes_sat_names(self):
+        """save_session() must include sat_names in serialized layer data."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states()
+        names = [f"SAT-{i}" for i in range(len(states))]
+        mgr.add_layer(
+            name="Named", category="Constellation",
+            layer_type="walker", states=states, params={},
+            sat_names=names,
+        )
+        session = mgr.save_session()
+        assert session["layers"][0].get("sat_names") == names
+
+    def test_walker_restore_generates_sat_names(self):
+        """Walker session restore must generate sat_names from shell config."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        session_data = {
+            "layers": [{
+                "name": "Constellation:NameTest",
+                "category": "Constellation",
+                "layer_type": "walker",
+                "mode": "snapshot",
+                "params": {
+                    "altitude_km": 550, "inclination_deg": 53,
+                    "num_planes": 1, "sats_per_plane": 2,
+                    "phase_factor": 1, "raan_offset_deg": 0,
+                    "shell_name": "NameTest",
+                },
+            }],
+        }
+        mgr.load_session(session_data)
+        layer = list(mgr.layers.values())[0]
+        assert layer.sat_names is not None
+        assert len(layer.sat_names) == 2
+        assert all("NameTest" in n for n in layer.sat_names)
+
+    def test_analysis_layer_inherits_sat_names(self):
+        """Analysis layers must inherit sat_names from source constellation."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states()
+        names = [f"SAT-{i}" for i in range(len(states))]
+        source_id = mgr.add_layer(
+            name="Source", category="Constellation",
+            layer_type="walker", states=states, params={},
+            sat_names=names,
+        )
+        analysis_id = mgr.add_layer(
+            name="Analysis:Eclipse", category="Analysis",
+            layer_type="eclipse", states=states, params={},
+            source_layer_id=source_id, sat_names=names,
+        )
+        layer = mgr.layers[analysis_id]
+        assert layer.sat_names == names
+
+
 class TestCliLoadSession:
     """CLI --load-session flag loads a session file at startup."""
 

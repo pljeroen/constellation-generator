@@ -167,6 +167,7 @@ def snapshot_packets(
     states: list[OrbitalState],
     epoch: datetime,
     name: str = "Constellation",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Static point representation: one position per satellite at epoch.
 
@@ -177,6 +178,7 @@ def snapshot_packets(
         states: List of orbital states.
         epoch: Evaluation time for positions.
         name: Document name.
+        sat_names: Optional per-satellite display names.
 
     Returns:
         List of CZML packets (document + N point packets).
@@ -199,10 +201,11 @@ def snapshot_packets(
         lat_deg, lon_deg, alt_m = ecef_to_geodetic(pos_ecef)
 
         plane_color = _PLANE_COLORS[plane_indices[idx] % len(_PLANE_COLORS)]
+        sat_name = sat_names[idx] if sat_names else f"Sat-{idx}"
 
         pkt: dict = {
             "id": f"snapshot-{idx}",
-            "name": f"Sat-{idx}",
+            "name": sat_name,
             "description": _satellite_description(state, epoch),
             "position": {
                 "cartographicDegrees": [lon_deg, lat_deg, alt_m],
@@ -223,6 +226,7 @@ def constellation_packets(
     duration: timedelta,
     step: timedelta,
     name: str = "Constellation",
+    sat_names: list[str] | None = None,
 ) -> list[dict]:
     """Document packet + 1 packet per satellite with time-varying position.
 
@@ -259,10 +263,11 @@ def constellation_packets(
         plane_color = _PLANE_COLORS[plane_indices[idx] % len(_PLANE_COLORS)]
         path_color = [plane_color[0], plane_color[1], plane_color[2], 128]
 
+        sat_name = sat_names[idx] if sat_names else f"Sat-{idx}"
         sat_id = f"satellite-{idx}"
         pkt: dict = {
             "id": sat_id,
-            "name": f"Sat-{idx}",
+            "name": sat_name,
             "description": _satellite_description(state, epoch),
             "position": {
                 "epoch": _iso(epoch),
@@ -275,7 +280,7 @@ def constellation_packets(
                 "color": {"rgba": list(plane_color)},
             },
             "label": {
-                "text": f"Sat-{idx}",
+                "text": sat_name,
                 "font": "11pt sans-serif",
                 "fillColor": {"rgba": [255, 255, 255, 200]},
                 "outlineWidth": 2,

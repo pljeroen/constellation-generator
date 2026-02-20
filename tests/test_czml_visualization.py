@@ -832,3 +832,73 @@ class TestUntestedPacketGenerators:
         for pkt in pkts[1:]:
             assert "point" in pkt
             assert "label" in pkt
+
+
+class TestSatNamesVisualization:
+    """SAT-NAME-01: All visualization functions must accept optional sat_names."""
+
+    def test_eclipse_snapshot_sat_names(self, orbital_states):
+        """eclipse_snapshot_packets uses provided sat_names."""
+        names = [f"ISS-{i}" for i in range(len(orbital_states))]
+        pkts = eclipse_snapshot_packets(orbital_states, EPOCH, sat_names=names)
+        for idx, pkt in enumerate(pkts[1:]):
+            assert pkt["name"] == names[idx]
+
+    def test_eclipse_constellation_sat_names(self, orbital_states):
+        """eclipse_constellation_packets uses provided sat_names."""
+        names = [f"NOAA-{i}" for i in range(len(orbital_states))]
+        pkts = eclipse_constellation_packets(
+            orbital_states, EPOCH, timedelta(hours=2), timedelta(seconds=60),
+            sat_names=names,
+        )
+        for idx, pkt in enumerate(pkts[1:]):
+            assert pkt["name"] == names[idx]
+
+    def test_eclipse_constellation_default_sat_names(self, orbital_states):
+        """Without sat_names, eclipse_constellation falls back to Sat-{idx}."""
+        pkts = eclipse_constellation_packets(
+            orbital_states, EPOCH, timedelta(hours=2), timedelta(seconds=60),
+        )
+        for idx, pkt in enumerate(pkts[1:]):
+            assert pkt["name"] == f"Sat-{idx}"
+
+    def test_isl_topology_sat_names(self, orbital_states):
+        """isl_topology_packets uses provided sat_names for satellite packets."""
+        link = LinkConfig(frequency_hz=26e9, transmit_power_w=1.0,
+                          tx_antenna_gain_dbi=30.0, rx_antenna_gain_dbi=30.0,
+                          system_noise_temp_k=290.0, bandwidth_hz=250e6)
+        names = [f"LINK-{i}" for i in range(len(orbital_states))]
+        pkts = isl_topology_packets(
+            orbital_states, EPOCH, link, EPOCH, 7200.0, 60.0,
+            sat_names=names,
+        )
+        sat_pkts = [p for p in pkts[1:] if p.get("id", "").startswith("topo-sat-")]
+        for idx, pkt in enumerate(sat_pkts):
+            assert pkt["name"] == names[idx]
+
+    def test_radiation_coloring_sat_names(self, orbital_states):
+        """radiation_coloring_packets uses provided sat_names."""
+        names = [f"RAD-{i}" for i in range(len(orbital_states))]
+        pkts = radiation_coloring_packets(
+            orbital_states, EPOCH, timedelta(hours=2), timedelta(seconds=60),
+            sat_names=names,
+        )
+        for idx, pkt in enumerate(pkts[1:]):
+            assert pkt["name"] == names[idx]
+
+    def test_beta_angle_sat_names(self, orbital_states):
+        """beta_angle_packets uses provided sat_names."""
+        names = [f"BETA-{i}" for i in range(len(orbital_states))]
+        pkts = beta_angle_packets(orbital_states, EPOCH, sat_names=names)
+        for idx, pkt in enumerate(pkts[1:]):
+            assert names[idx] in pkt["name"]
+
+    def test_cascade_evolution_sat_names(self, orbital_states):
+        """cascade_evolution_packets uses provided sat_names."""
+        names = [f"CASCADE-{i}" for i in range(len(orbital_states))]
+        pkts = cascade_evolution_packets(
+            orbital_states, EPOCH, timedelta(hours=2), timedelta(seconds=60),
+            sat_names=names,
+        )
+        for idx, pkt in enumerate(pkts[1:]):
+            assert pkt["name"] == names[idx]

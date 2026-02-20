@@ -260,6 +260,7 @@ class LayerState:
     params: dict[str, Any]
     czml: list[dict[str, Any]]
     source_layer_id: str = ""  # BUG-028: explicit source reference for analysis layers
+    sat_names: list[str] | None = None
 
 
 def _generate_czml(
@@ -269,6 +270,7 @@ def _generate_czml(
     epoch: datetime,
     name: str,
     params: dict[str, Any],
+    sat_names: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Dispatch CZML generation based on layer type and mode."""
     duration = params.get("duration", _DEFAULT_DURATION)
@@ -276,14 +278,14 @@ def _generate_czml(
 
     if layer_type == "walker" or layer_type == "celestrak":
         if mode == "snapshot":
-            return snapshot_packets(states, epoch, name=name)
-        return constellation_packets(states, epoch, duration, step, name=name)
+            return snapshot_packets(states, epoch, name=name, sat_names=sat_names)
+        return constellation_packets(states, epoch, duration, step, name=name, sat_names=sat_names)
 
     if layer_type == "eclipse":
         if mode == "snapshot":
-            return eclipse_snapshot_packets(states, epoch, name=name)
+            return eclipse_snapshot_packets(states, epoch, name=name, sat_names=sat_names)
         return eclipse_constellation_packets(
-            states, epoch, duration, step, name=name,
+            states, epoch, duration, step, name=name, sat_names=sat_names,
         )
 
     if layer_type == "coverage":
@@ -339,13 +341,13 @@ def _generate_czml(
         if station is None:
             return [{"id": "document", "name": name, "version": "1.0"}]
         return ground_station_packets(
-            station, states, epoch, duration, step, name=name,
+            station, states, epoch, duration, step, name=name, sat_names=sat_names,
         )
 
     if layer_type == "sensor":
         sensor = params.get("_sensor", _DEFAULT_SENSOR)
         return sensor_footprint_packets(
-            states, epoch, duration, step, sensor, name=name,
+            states, epoch, duration, step, sensor, name=name, sat_names=sat_names,
         )
 
     if layer_type == "isl":
@@ -358,7 +360,7 @@ def _generate_czml(
         step_s = step.total_seconds()
         return isl_topology_packets(
             capped, epoch, link, epoch, dur_s, step_s,
-            max_range_km=max_range, name=name,
+            max_range_km=max_range, name=name, sat_names=sat_names,
         )
 
     if layer_type == "fragility":
@@ -378,7 +380,7 @@ def _generate_czml(
         dur_s = duration.total_seconds()
         step_s = step.total_seconds()
         return fragility_constellation_packets(
-            capped, epoch, link, n_rad_s, ctrl_s, dur_s, step_s, name=name,
+            capped, epoch, link, n_rad_s, ctrl_s, dur_s, step_s, name=name, sat_names=sat_names,
         )
 
     if layer_type == "hazard":
@@ -401,7 +403,7 @@ def _generate_czml(
         max_dur_s = min(half_life_s, 365.25 * 86400.0)
         hazard_step_s = 86400.0  # daily
         return hazard_evolution_packets(
-            states, curve, epoch, max_dur_s, hazard_step_s, name=name,
+            states, curve, epoch, max_dur_s, hazard_step_s, name=name, sat_names=sat_names,
         )
 
     if layer_type == "network_eclipse":
@@ -414,7 +416,7 @@ def _generate_czml(
         step_s = step.total_seconds()
         return network_eclipse_packets(
             capped, link, epoch, dur_s, step_s,
-            max_range_km=max_range, name=name,
+            max_range_km=max_range, name=name, sat_names=sat_names,
         )
 
     if layer_type == "coverage_connectivity":
@@ -425,7 +427,7 @@ def _generate_czml(
         dur_s = duration.total_seconds()
         step_s = step.total_seconds()
         return coverage_connectivity_packets(
-            capped, link, epoch, dur_s, step_s, name=name,
+            capped, link, epoch, dur_s, step_s, name=name,  # grid-based, no per-sat names
         )
 
     if layer_type == "precession":
@@ -435,18 +437,18 @@ def _generate_czml(
         prec_duration = timedelta(days=7)
         prec_step = timedelta(minutes=15)
         return constellation_packets(
-            subset, epoch, prec_duration, prec_step, name=name,
+            subset, epoch, prec_duration, prec_step, name=name, sat_names=sat_names,
         )
 
     if layer_type == "kessler_heatmap":
-        return kessler_heatmap_packets(states, epoch, duration, step, name=name)
+        return kessler_heatmap_packets(states, epoch, duration, step, name=name, sat_names=sat_names)
 
     if layer_type == "conjunction_hazard":
         capped = states[:_MAX_TOPOLOGY_SATS]
         if len(states) > _MAX_TOPOLOGY_SATS:
             params["_capped_from"] = len(states)
         return conjunction_hazard_packets(
-            capped, epoch, duration, step, name=name,
+            capped, epoch, duration, step, name=name, sat_names=sat_names,
         )
 
     if layer_type == "conjunction":
@@ -454,10 +456,13 @@ def _generate_czml(
             return [{"id": "document", "name": name, "version": "1.0"}]
         state_a = states[0]
         state_b = states[len(states) // 2]
+        name_a = sat_names[0] if sat_names else "Sat-A"
+        name_b = sat_names[len(states) // 2] if sat_names else "Sat-B"
         window = timedelta(minutes=30)
         conj_step = timedelta(seconds=10)
         return conjunction_replay_packets(
             state_a, state_b, epoch, window, conj_step,
+            name_a=name_a, name_b=name_b,
         )
 
     if layer_type == "dop_grid":
@@ -470,42 +475,42 @@ def _generate_czml(
 
     if layer_type == "radiation":
         return radiation_coloring_packets(
-            states, epoch, duration, step, name=name,
+            states, epoch, duration, step, name=name, sat_names=sat_names,
         )
 
     if layer_type == "beta_angle":
-        return beta_angle_packets(states, epoch, name=name)
+        return beta_angle_packets(states, epoch, name=name, sat_names=sat_names)
 
     if layer_type == "deorbit":
         drag = params.get("_drag_config", _DEFAULT_DRAG)
         return deorbit_compliance_packets(
-            states, epoch, drag, name=name,
+            states, epoch, drag, name=name, sat_names=sat_names,
         )
 
     if layer_type == "station_keeping":
         drag = params.get("_drag_config", _DEFAULT_DRAG)
         density_fn = _make_density_func(epoch)
         return station_keeping_packets(
-            states, epoch, drag_config=drag, density_func=density_fn, name=name,
+            states, epoch, drag_config=drag, density_func=density_fn, name=name, sat_names=sat_names,
         )
 
     if layer_type == "cascade_sir":
         return cascade_evolution_packets(
-            states, epoch, duration, step, name=name,
+            states, epoch, duration, step, name=name, sat_names=sat_names,
         )
 
     if layer_type == "relative_motion":
         if len(states) < 2:
             return [{"id": "document", "name": name, "version": "1.0"}]
         return relative_motion_packets(
-            states[0], states[1], epoch, duration, step, name=name,
+            states[0], states[1], epoch, duration, step, name=name, sat_names=sat_names,
         )
 
     if layer_type == "maintenance":
         drag = params.get("_drag_config", _DEFAULT_DRAG)
         density_fn = _make_density_func(epoch)
         return maintenance_schedule_packets(
-            states, epoch, drag_config=drag, density_func=density_fn, name=name,
+            states, epoch, drag_config=drag, density_func=density_fn, name=name, sat_names=sat_names,
         )
 
     # Fallback: return empty document
@@ -556,6 +561,7 @@ class LayerManager:
         mode: str | None = None,
         source_layer_id: str = "",
         visible: bool = True,
+        sat_names: list[str] | None = None,
     ) -> str:
         """Add a visualization layer. Returns the layer ID."""
         if mode is None:
@@ -567,7 +573,7 @@ class LayerManager:
 
         # Copy params so _generate_czml mutations don't leak to caller
         gen_params = dict(params)
-        czml = _generate_czml(layer_type, mode, states, self.epoch, name, gen_params)
+        czml = _generate_czml(layer_type, mode, states, self.epoch, name, gen_params, sat_names=sat_names)
 
         with self._lock:
             self.layers[layer_id] = LayerState(
@@ -581,6 +587,7 @@ class LayerManager:
                 params=gen_params,
                 czml=czml,
                 source_layer_id=source_layer_id,
+                sat_names=sat_names,
             )
             return layer_id
 
@@ -637,7 +644,7 @@ class LayerManager:
             if mode is not None and mode != layer.mode:
                 layer.mode = mode
                 regen_args = (layer.layer_type, mode, layer.states,
-                              self.epoch, layer.name, layer.params)
+                              self.epoch, layer.name, layer.params, layer.sat_names)
         if regen_args is not None:
             new_czml = _generate_czml(*regen_args)
             with self._lock:
@@ -687,9 +694,10 @@ class LayerManager:
             mode = layer.mode
             states = layer.states
             name = layer.name
+            layer_sat_names = layer.sat_names
 
         # Generate CZML outside lock (can be slow)
-        new_czml = _generate_czml(layer_type, mode, states, self.epoch, name, new_params)
+        new_czml = _generate_czml(layer_type, mode, states, self.epoch, name, new_params, sat_names=layer_sat_names)
 
         # Swap atomically (BUG-015)
         with self._lock:
@@ -715,6 +723,8 @@ class LayerManager:
                         if not k.startswith("_")
                     },
                 }
+                if layer.sat_names is not None:
+                    entry["sat_names"] = layer.sat_names
                 # For analysis layers, record source constellation index
                 if layer.category == "Analysis" and layer.source_layer_id:
                     if layer.source_layer_id in layer_ids:
@@ -783,6 +793,7 @@ class LayerManager:
                         shell_name=params.get("shell_name", "Walker"),
                     )
                     sats = generate_walker_shell(config)
+                    restored_sat_names = layer_data.get("sat_names") or [s.name for s in sats]
                     states = [
                         derive_orbital_state(s, self.epoch, include_j2=True)
                         for s in sats
@@ -795,6 +806,7 @@ class LayerManager:
                         params=params,
                         mode=layer_data.get("mode"),
                         visible=layer_data.get("visible", True),
+                        sat_names=restored_sat_names,
                     )
                     restored_layers.append(layer_id)
                     restored += 1
@@ -836,16 +848,19 @@ class LayerManager:
             params = layer_data.get("params", {})
             source_idx = layer_data.get("source_layer_index")
             source_states: list[OrbitalState] = []
+            source_sat_names: list[str] | None = None
             if source_idx is not None and 0 <= source_idx < len(restored_layers):
                 source_lid = restored_layers[source_idx]
                 if source_lid and source_lid in self.layers:
                     source_states = self.layers[source_lid].states
+                    source_sat_names = self.layers[source_lid].sat_names
             if not source_states:
                 for lid in restored_layers:
                     if lid and lid in self.layers:
                         layer = self.layers[lid]
                         if layer.category == "Constellation":
                             source_states = layer.states
+                            source_sat_names = layer.sat_names
                             break
             if not source_states:
                 continue
@@ -858,6 +873,7 @@ class LayerManager:
                     params=params,
                     mode=layer_data.get("mode"),
                     visible=layer_data.get("visible", True),
+                    sat_names=source_sat_names,
                 )
                 restored += 1
             except (KeyError, TypeError, ValueError, ArithmeticError):
@@ -1115,6 +1131,7 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                     shell_name=params.get("shell_name", "Walker"),
                 )
                 sats = generate_walker_shell(config)
+                sat_names = [s.name for s in sats]
                 states = [
                     derive_orbital_state(s, self.layer_manager.epoch, include_j2=True)
                     for s in sats
@@ -1125,6 +1142,7 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                     layer_type="walker",
                     states=states,
                     params=params,
+                    sat_names=sat_names,
                 )
                 self._json_response({"layer_id": layer_id}, 201)
             except (KeyError, TypeError, ValueError) as e:
@@ -1146,6 +1164,7 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                 if not sats:
                     self._error_response(400, "No satellites found")
                     return
+                sat_names = [s.name for s in sats]
                 states = [
                     derive_orbital_state(s, self.layer_manager.epoch, include_j2=True)
                     for s in sats
@@ -1157,6 +1176,7 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                     layer_type="celestrak",
                     states=states,
                     params=params,
+                    sat_names=sat_names,
                 )
                 self._json_response({"layer_id": layer_id}, 201)
             except (ConnectionError, OSError, ValueError, KeyError, json.JSONDecodeError) as e:
@@ -1201,6 +1221,7 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                 states=source.states,
                 params=params,
                 source_layer_id=source_layer_id,
+                sat_names=source.sat_names,
             )
             self._json_response({"layer_id": layer_id}, 201)
         except (ValueError, TypeError, KeyError, ArithmeticError) as e:
