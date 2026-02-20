@@ -982,12 +982,21 @@ class LayerManager:
                 "rows": rows,
             }
 
-    def save_session(self) -> dict[str, Any]:
-        """Serialize current session state for save/restore."""
+    def save_session(
+        self,
+        name: str = "Untitled",
+        description: str = "",
+    ) -> dict[str, Any]:
+        """Serialize current session state for save/restore.
+
+        Args:
+            name: Scenario name (shown in load dialog and recent list).
+            description: Optional scenario description.
+        """
         with self._lock:
             layers = []
-            # Build index of layer_id -> position for source references
             layer_ids = list(self.layers.keys())
+            categories: dict[str, int] = {}
             for layer in self.layers.values():
                 entry: dict[str, Any] = {
                     "name": layer.name,
@@ -1004,23 +1013,30 @@ class LayerManager:
                     entry["sat_names"] = layer.sat_names
                 if layer.metrics is not None:
                     entry["metrics"] = layer.metrics
-                # For analysis layers, record source constellation index
                 if layer.category == "Analysis" and layer.source_layer_id:
                     if layer.source_layer_id in layer_ids:
                         entry["source_layer_index"] = layer_ids.index(layer.source_layer_id)
                     else:
-                        # Fallback: identity match for legacy layers
                         for idx, lid in enumerate(layer_ids):
                             other = self.layers[lid]
                             if other.category == "Constellation" and other.states is layer.states:
                                 entry["source_layer_index"] = idx
                                 break
+                categories[layer.category] = categories.get(layer.category, 0) + 1
                 layers.append(entry)
             return {
+                "version": 1,
+                "name": name,
+                "description": description,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "epoch": self.epoch.isoformat(),
                 "duration_s": self.duration.total_seconds(),
                 "step_s": self.step.total_seconds(),
                 "layers": layers,
+                "layer_summary": {
+                    "total": len(layers),
+                    **categories,
+                },
             }
 
     def load_session(self, session_data: dict[str, Any]) -> int:
@@ -1373,7 +1389,15 @@ class ConstellationHandler(BaseHTTPRequestHandler):
             return
 
         if base == "/api/session" and param == "save":
-            session = self.layer_manager.save_session()
+            try:
+                body = self._read_body()
+            except (ValueError, json.JSONDecodeError):
+                body = {}
+            save_name = body.get("name", "Untitled")
+            save_desc = body.get("description", "")
+            session = self.layer_manager.save_session(
+                name=save_name, description=save_desc,
+            )
             self._json_response({"session": session})
             return
 

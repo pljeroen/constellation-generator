@@ -2963,3 +2963,93 @@ class TestSatelliteTable:
         planes = [r["plane"] for r in table["rows"]]
         # First 2 sats in plane 0, next 2 in plane 1
         assert planes == [0, 0, 1, 1]
+
+
+# ---------------------------------------------------------------------------
+# APP-04: Named scenarios with description
+# ---------------------------------------------------------------------------
+
+
+class TestNamedScenarios:
+    """Tests for named scenario save/load with metadata."""
+
+    def test_save_session_includes_name_and_description(self):
+        """save_session accepts and includes name + description."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=1, n_sats=2)
+        mgr.add_layer(
+            name="Constellation:Test",
+            category="Constellation",
+            layer_type="walker",
+            states=states,
+            params={"altitude_km": 550},
+        )
+        session = mgr.save_session(name="Test Scenario", description="A test")
+        assert session["name"] == "Test Scenario"
+        assert session["description"] == "A test"
+
+    def test_save_session_includes_timestamp(self):
+        """save_session includes ISO timestamp."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        session = mgr.save_session(name="X")
+        assert "timestamp" in session
+        # Should be parseable ISO format
+        datetime.fromisoformat(session["timestamp"])
+
+    def test_save_session_includes_version(self):
+        """save_session includes version field."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        session = mgr.save_session(name="X")
+        assert "version" in session
+        assert isinstance(session["version"], int)
+
+    def test_save_session_includes_layer_summary(self):
+        """save_session includes summary of layer types."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=1, n_sats=2)
+        mgr.add_layer(
+            name="Constellation:Test",
+            category="Constellation",
+            layer_type="walker",
+            states=states,
+            params={},
+        )
+        mgr.add_layer(
+            name="Analysis:Eclipse",
+            category="Analysis",
+            layer_type="eclipse",
+            states=states,
+            params={},
+        )
+        session = mgr.save_session(name="Dual")
+        assert "layer_summary" in session
+        assert session["layer_summary"]["total"] == 2
+
+    def test_save_session_default_name(self):
+        """save_session uses 'Untitled' when name not provided."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        session = mgr.save_session()
+        assert session["name"] == "Untitled"
+        assert session["description"] == ""
+
+    def test_load_session_with_metadata(self):
+        """load_session works with name/description metadata present."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=1, n_sats=2)
+        mgr.add_layer(
+            name="Constellation:Test",
+            category="Constellation",
+            layer_type="walker",
+            states=states,
+            params={"altitude_km": 550, "inclination_deg": 53, "num_planes": 1, "sats_per_plane": 2},
+        )
+        session = mgr.save_session(name="Saved", description="desc")
+        mgr2 = LayerManager(epoch=EPOCH)
+        restored = mgr2.load_session(session)
+        assert restored >= 1

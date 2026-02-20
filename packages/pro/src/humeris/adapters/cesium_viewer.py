@@ -504,6 +504,15 @@ def generate_interactive_html(
         .layer-metrics .metric-row .metric-val {{
             font-family: monospace; color: rgba(80,200,255,0.9);
         }}
+        .recent-item {{
+            padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+        }}
+        .recent-item .recent-name {{
+            display: block; color: rgba(80,160,255,0.9); font-size: 11px;
+        }}
+        .recent-item .recent-meta {{
+            display: block; color: rgba(255,255,255,0.4); font-size: 9px;
+        }}
         #satTable {{
             position: fixed; bottom: 0; left: 280px; right: 0;
             max-height: 35vh; overflow: auto;
@@ -634,6 +643,11 @@ def generate_interactive_html(
             <button class="btn btn-sm" onclick="saveSession()">Save Session</button>
             <button class="btn btn-sm" onclick="loadSession()">Load Session</button>
         </div>
+        <!-- Recent Scenarios (APP-04) -->
+        <details>
+            <summary>Recent</summary>
+            <div id="recentScenarios" class="panel-section"></div>
+        </details>
         <!-- Simulation Settings Section -->
         <details>
             <summary>Simulation</summary>
@@ -1180,17 +1194,53 @@ def generate_interactive_html(
 
         // --- Session save/load ---
         function saveSession() {{
-            apiPost("/api/session/save", {{}}).then(function(resp) {{
+            var scenarioName = prompt("Scenario name:", "");
+            if (scenarioName === null) return;
+            if (!scenarioName.trim()) scenarioName = "Untitled";
+            var scenarioDesc = prompt("Description (optional):", "");
+            if (scenarioDesc === null) scenarioDesc = "";
+            apiPost("/api/session/save", {{name: scenarioName, description: scenarioDesc}}).then(function(resp) {{
                 var blob = new Blob([JSON.stringify(resp.session, null, 2)], {{type: "application/json"}});
                 var a = document.createElement("a");
                 a.href = URL.createObjectURL(blob);
-                a.download = "humeris-session.json";
+                a.download = scenarioName.replace(/[^a-zA-Z0-9_-]/g, "_") + ".json";
                 a.click();
                 setTimeout(function() {{ URL.revokeObjectURL(a.href); }}, 1000);
-                showToast("Session saved", "success");
+                addToRecentScenarios(resp.session);
+                showToast("Session saved: " + scenarioName, "success");
             }}).catch(function(e) {{
                 showToast("Save error: " + e.message, "error");
             }});
+        }}
+        function addToRecentScenarios(session) {{
+            var recent = JSON.parse(localStorage.getItem("humeris_recent") || "[]");
+            recent.unshift({{
+                name: session.name || "Untitled",
+                description: session.description || "",
+                timestamp: session.timestamp,
+                layer_count: session.layer_summary ? session.layer_summary.total : 0,
+            }});
+            if (recent.length > 5) recent = recent.slice(0, 5);
+            localStorage.setItem("humeris_recent", JSON.stringify(recent));
+            renderRecentScenarios();
+        }}
+        function renderRecentScenarios() {{
+            var container = document.getElementById("recentScenarios");
+            if (!container) return;
+            var recent = JSON.parse(localStorage.getItem("humeris_recent") || "[]");
+            if (recent.length === 0) {{
+                container.innerHTML = '<div style="color:rgba(255,255,255,0.4);font-style:italic;padding:4px 0">No recent scenarios</div>';
+                return;
+            }}
+            var html = "";
+            recent.forEach(function(r) {{
+                var ts = r.timestamp ? new Date(r.timestamp).toLocaleDateString() : "";
+                html += '<div class="recent-item" title="' + (r.description || "") + '">';
+                html += '<span class="recent-name">' + (r.name || "Untitled") + '</span>';
+                html += '<span class="recent-meta">' + r.layer_count + ' layers | ' + ts + '</span>';
+                html += '</div>';
+            }});
+            container.innerHTML = html;
         }}
         function clearAllSources() {{
             // Remove all tracked data sources from the viewer
@@ -1212,11 +1262,18 @@ def generate_interactive_html(
                 reader.onload = function(e) {{
                     try {{
                         var session = JSON.parse(e.target.result);
-                        // Clear old data sources before loading new session
+                        // Show metadata confirmation
+                        var sName = session.name || "Untitled";
+                        var sDesc = session.description || "";
+                        var sDate = session.timestamp ? new Date(session.timestamp).toLocaleString() : "unknown";
+                        var sLayers = session.layer_summary ? session.layer_summary.total : (session.layers ? session.layers.length : 0);
+                        var msg = "Load scenario?\\n\\nName: " + sName;
+                        if (sDesc) msg += "\\nDescription: " + sDesc;
+                        msg += "\\nDate: " + sDate + "\\nLayers: " + sLayers;
+                        if (!confirm(msg)) return;
                         clearAllSources();
                         capToastIds = new Set();
                         apiPost("/api/session/load", {{session: session}}).then(function() {{
-                            // Reload all layers
                             apiGet("/api/state").then(function(state) {{
                                 var promises = state.layers.map(function(l) {{
                                     return loadLayerCzml(l.layer_id);
@@ -1225,7 +1282,7 @@ def generate_interactive_html(
                                     rebuildPanel();
                                 }});
                             }});
-                            showToast("Session loaded", "success");
+                            showToast("Loaded: " + sName, "success");
                         }}).catch(function(err) {{
                             showToast("Load error: " + err.message, "error");
                         }});
@@ -1536,6 +1593,7 @@ def generate_interactive_html(
             }});
         }}
         loadExistingLayers();
+        renderRecentScenarios();
 
         // Zoom to first data source when loaded dynamically
         viewer.dataSources.dataSourceAdded.addEventListener(function(collection, ds) {{
