@@ -2731,3 +2731,142 @@ class TestReconfigureConstellation:
         state = mgr.get_state()
         layer_info = state["layers"][0]
         assert layer_info["editable"] is False
+
+
+# ---------------------------------------------------------------------------
+# APP-02: Metrics summary panel
+# ---------------------------------------------------------------------------
+
+
+class TestLayerMetrics:
+    """APP-02: Analysis layers produce quantitative metrics."""
+
+    def test_coverage_layer_has_metrics(self):
+        """Coverage analysis layer returns metrics in get_state()."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=3, n_sats=3)
+        layer_id = mgr.add_layer(
+            name="Analysis:Coverage",
+            category="Analysis",
+            layer_type="coverage",
+            states=states,
+            params={"lat_step_deg": 30, "lon_step_deg": 30, "min_elevation_deg": 10},
+        )
+        state = mgr.get_state()
+        layer_info = [l for l in state["layers"] if l["layer_id"] == layer_id][0]
+        assert "metrics" in layer_info
+        metrics = layer_info["metrics"]
+        assert "mean_visible" in metrics
+        assert "percent_covered" in metrics
+        assert isinstance(metrics["mean_visible"], (int, float))
+
+    def test_eclipse_layer_has_metrics(self):
+        """Eclipse analysis layer returns metrics in get_state()."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=2, n_sats=2)
+        layer_id = mgr.add_layer(
+            name="Analysis:Eclipse",
+            category="Analysis",
+            layer_type="eclipse",
+            states=states,
+            params={},
+        )
+        state = mgr.get_state()
+        layer_info = [l for l in state["layers"] if l["layer_id"] == layer_id][0]
+        assert "metrics" in layer_info
+        metrics = layer_info["metrics"]
+        assert "avg_sunlit_pct" in metrics
+        assert "max_eclipse_min" in metrics
+
+    def test_beta_angle_layer_has_metrics(self):
+        """Beta angle analysis returns min/max/avg metrics."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=2, n_sats=2)
+        layer_id = mgr.add_layer(
+            name="Analysis:Beta",
+            category="Analysis",
+            layer_type="beta_angle",
+            states=states,
+            params={},
+        )
+        state = mgr.get_state()
+        layer_info = [l for l in state["layers"] if l["layer_id"] == layer_id][0]
+        assert "metrics" in layer_info
+        metrics = layer_info["metrics"]
+        assert "min_beta_deg" in metrics
+        assert "max_beta_deg" in metrics
+        assert "avg_beta_deg" in metrics
+
+    def test_deorbit_layer_has_metrics(self):
+        """Deorbit compliance analysis returns pass/fail count."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=2, n_sats=2)
+        layer_id = mgr.add_layer(
+            name="Analysis:Deorbit",
+            category="Analysis",
+            layer_type="deorbit",
+            states=states,
+            params={},
+        )
+        state = mgr.get_state()
+        layer_info = [l for l in state["layers"] if l["layer_id"] == layer_id][0]
+        assert "metrics" in layer_info
+        metrics = layer_info["metrics"]
+        assert "compliant" in metrics
+        assert "total" in metrics
+
+    def test_station_keeping_layer_has_metrics(self):
+        """Station-keeping analysis returns avg/max delta-V."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=2, n_sats=2)
+        layer_id = mgr.add_layer(
+            name="Analysis:SK",
+            category="Analysis",
+            layer_type="station_keeping",
+            states=states,
+            params={},
+        )
+        state = mgr.get_state()
+        layer_info = [l for l in state["layers"] if l["layer_id"] == layer_id][0]
+        assert "metrics" in layer_info
+        metrics = layer_info["metrics"]
+        assert "avg_dv_m_s" in metrics
+        assert "max_dv_m_s" in metrics
+
+    def test_walker_layer_has_no_metrics(self):
+        """Constellation layers (not analysis) have no metrics."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states()
+        layer_id = mgr.add_layer(
+            name="Constellation:Test",
+            category="Constellation",
+            layer_type="walker",
+            states=states,
+            params={},
+        )
+        state = mgr.get_state()
+        layer_info = [l for l in state["layers"] if l["layer_id"] == layer_id][0]
+        assert "metrics" not in layer_info or layer_info.get("metrics") is None
+
+    def test_metrics_recomputed_after_beta_angle(self):
+        """Metrics are computed correctly for beta angle analysis."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=2, n_sats=2)
+        mgr.add_layer(
+            name="Analysis:Beta",
+            category="Analysis",
+            layer_type="beta_angle",
+            states=states,
+            params={},
+        )
+        state = mgr.get_state()
+        layer_info = state["layers"][0]
+        assert "metrics" in layer_info
+        assert layer_info["metrics"]["min_beta_deg"] is not None

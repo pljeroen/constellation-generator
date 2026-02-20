@@ -490,6 +490,20 @@ def generate_interactive_html(
             color: #fff; border-radius: 2px; cursor: pointer;
         }}
         .edit-params .ep-apply:hover {{ background: rgba(80,200,80,0.5); }}
+        .layer-metrics {{
+            padding: 2px 12px 4px; font-size: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }}
+        .layer-metrics .metric-row {{
+            display: flex; justify-content: space-between; padding: 1px 0;
+            color: rgba(255,255,255,0.7);
+        }}
+        .layer-metrics .metric-row .metric-key {{
+            color: rgba(255,255,255,0.5);
+        }}
+        .layer-metrics .metric-row .metric-val {{
+            font-family: monospace; color: rgba(80,200,255,0.9);
+        }}
         @media (max-width: 1024px) {{
             #sidePanel {{ width: 220px; font-size: 11px; }}
             #sidePanel.collapsed {{ display: none; }}
@@ -1351,6 +1365,29 @@ def generate_interactive_html(
                             }})(layer.layer_id);
                             epDiv.appendChild(applyBtn);
                             catDiv.appendChild(epDiv);
+                        }}
+
+                        // Metrics display for analysis layers (APP-02)
+                        if (layer.metrics) {{
+                            var mDiv = document.createElement("div");
+                            mDiv.className = "layer-metrics";
+                            Object.keys(layer.metrics).forEach(function(key) {{
+                                var val = layer.metrics[key];
+                                if (typeof val === "object" && val !== null) {{
+                                    Object.keys(val).forEach(function(subk) {{
+                                        var row = document.createElement("div");
+                                        row.className = "metric-row";
+                                        row.innerHTML = '<span class="metric-key">' + key + " " + subk + '</span><span class="metric-val">' + val[subk] + '</span>';
+                                        mDiv.appendChild(row);
+                                    }});
+                                }} else {{
+                                    var row = document.createElement("div");
+                                    row.className = "metric-row";
+                                    row.innerHTML = '<span class="metric-key">' + key.replace(/_/g, " ") + '</span><span class="metric-val">' + val + '</span>';
+                                    mDiv.appendChild(row);
+                                }}
+                            }});
+                            catDiv.appendChild(mDiv);
                         }}
 
                         // Show legend for analysis layers

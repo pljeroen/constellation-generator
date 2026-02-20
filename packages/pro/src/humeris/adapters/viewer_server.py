@@ -66,6 +66,14 @@ from humeris.domain.sensor import SensorConfig, SensorType
 from humeris.domain.atmosphere import DragConfig
 from humeris.domain.orbital_mechanics import OrbitalConstants
 from humeris.domain.nrlmsise00 import atmospheric_density_nrlmsise00
+from humeris.domain.eclipse import compute_beta_angle
+from humeris.domain.constellation_metrics import (
+    compute_coverage_statistics,
+    compute_eclipse_statistics,
+)
+from humeris.domain.coverage import compute_coverage_snapshot
+from humeris.domain.station_keeping import compute_station_keeping_budget, StationKeepingConfig
+from humeris.domain.lifetime import compute_orbit_lifetime
 
 
 logger = logging.getLogger(__name__)
@@ -246,6 +254,128 @@ def _merge_clocks(
     return merged
 
 
+def _compute_metrics(
+    layer_type: str,
+    states: list[OrbitalState],
+    epoch: datetime,
+    params: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Compute quantitative metrics for an analysis layer.
+
+    Returns a dict of metric key-value pairs, or None for layer types
+    that don't have meaningful metrics.
+    """
+    import math
+    try:
+        if layer_type == "coverage":
+            lat_step = params.get("lat_step_deg", 10.0)
+            lon_step = params.get("lon_step_deg", 10.0)
+            min_elev = params.get("min_elevation_deg", 10.0)
+            grid = compute_coverage_snapshot(
+                states, epoch,
+                lat_step_deg=lat_step, lon_step_deg=lon_step,
+                min_elevation_deg=min_elev,
+            )
+            stats = compute_coverage_statistics(grid, n_fold_levels=[1, 2, 4])
+            return {
+                "mean_visible": round(stats.mean_visible, 2),
+                "max_visible": stats.max_visible,
+                "min_visible": stats.min_visible,
+                "percent_covered": round(stats.percent_covered, 1),
+                "n_fold_coverage": {str(k): round(v, 1) for k, v in stats.n_fold_coverage.items()},
+            }
+
+        if layer_type == "eclipse":
+            duration = params.get("duration", _DEFAULT_DURATION)
+            step = params.get("step", _DEFAULT_STEP)
+            if isinstance(duration, (int, float)):
+                duration = timedelta(seconds=duration)
+            if isinstance(step, (int, float)):
+                step = timedelta(seconds=step)
+            sunlit_pcts = []
+            max_eclipse_s = 0.0
+            for state in states:
+                es = compute_eclipse_statistics(state, epoch, duration, step)
+                sunlit_pcts.append((1.0 - es.eclipse_fraction) * 100.0)
+                if es.max_duration_s > max_eclipse_s:
+                    max_eclipse_s = es.max_duration_s
+            avg_sunlit = sum(sunlit_pcts) / len(sunlit_pcts) if sunlit_pcts else 0.0
+            return {
+                "avg_sunlit_pct": round(avg_sunlit, 1),
+                "max_eclipse_min": round(max_eclipse_s / 60.0, 1),
+            }
+
+        if layer_type == "beta_angle":
+            betas = []
+            for state in states:
+                beta = compute_beta_angle(
+                    state.raan_rad, state.inclination_rad, epoch,
+                )
+                betas.append(beta)
+            return {
+                "min_beta_deg": round(min(betas), 1),
+                "max_beta_deg": round(max(betas), 1),
+                "avg_beta_deg": round(sum(betas) / len(betas), 1) if betas else 0.0,
+            }
+
+        if layer_type == "deorbit":
+            drag = params.get("_drag_config", _DEFAULT_DRAG)
+            compliant = 0
+            total = len(states)
+            for state in states:
+                try:
+                    result = compute_orbit_lifetime(
+                        state.semi_major_axis_m, state.eccentricity,
+                        drag, epoch,
+                    )
+                    lifetime_years = result.lifetime_days / 365.25
+                except (ValueError, ArithmeticError):
+                    lifetime_years = 999.0
+                if lifetime_years <= 25.0:
+                    compliant += 1
+            return {
+                "compliant": compliant,
+                "total": total,
+                "compliance_pct": round(100.0 * compliant / total, 1) if total > 0 else 0.0,
+            }
+
+        if layer_type == "station_keeping":
+            drag = params.get("_drag_config", _DEFAULT_DRAG)
+            density_fn = _make_density_func(epoch)
+            dvs = []
+            for state in states:
+                alt_km = (state.semi_major_axis_m - OrbitalConstants.R_EARTH) / 1000.0
+                inc_deg = math.degrees(state.inclination_rad)
+                try:
+                    sk_config = StationKeepingConfig(
+                        target_altitude_km=alt_km,
+                        inclination_deg=inc_deg,
+                        drag_config=drag,
+                        isp_s=220.0,
+                        dry_mass_kg=4.0,
+                        propellant_mass_kg=0.5,
+                    )
+                    budget = compute_station_keeping_budget(
+                        sk_config, density_func=density_fn, epoch=epoch,
+                    )
+                    dvs.append(budget.total_dv_per_year_ms)
+                except (ValueError, ArithmeticError):
+                    pass
+            if dvs:
+                return {
+                    "avg_dv_m_s": round(sum(dvs) / len(dvs), 3),
+                    "max_dv_m_s": round(max(dvs), 3),
+                    "min_dv_m_s": round(min(dvs), 3),
+                }
+            return {"avg_dv_m_s": 0.0, "max_dv_m_s": 0.0, "min_dv_m_s": 0.0}
+
+    except Exception:
+        logger.debug("Metrics computation failed for %s", layer_type, exc_info=True)
+        return None
+
+    return None
+
+
 @dataclass
 class LayerState:
     """State for a single visualization layer."""
@@ -261,6 +391,7 @@ class LayerState:
     czml: list[dict[str, Any]]
     source_layer_id: str = ""  # BUG-028: explicit source reference for analysis layers
     sat_names: list[str] | None = None
+    metrics: dict[str, Any] | None = None
 
 
 def _generate_czml(
@@ -482,9 +613,8 @@ def _generate_czml(
         return beta_angle_packets(states, epoch, name=name, sat_names=sat_names)
 
     if layer_type == "deorbit":
-        drag = params.get("_drag_config", _DEFAULT_DRAG)
         return deorbit_compliance_packets(
-            states, epoch, drag, name=name, sat_names=sat_names,
+            states, epoch, name=name, sat_names=sat_names,
         )
 
     if layer_type == "station_keeping":
@@ -574,6 +704,7 @@ class LayerManager:
         # Copy params so _generate_czml mutations don't leak to caller
         gen_params = dict(params)
         czml = _generate_czml(layer_type, mode, states, self.epoch, name, gen_params, sat_names=sat_names)
+        metrics = _compute_metrics(layer_type, states, self.epoch, gen_params)
 
         with self._lock:
             self.layers[layer_id] = LayerState(
@@ -588,6 +719,7 @@ class LayerManager:
                 czml=czml,
                 source_layer_id=source_layer_id,
                 sat_names=sat_names,
+                metrics=metrics,
             )
             return layer_id
 
@@ -670,6 +802,8 @@ class LayerManager:
                     },
                 }
                 info["editable"] = layer.layer_type == "walker"
+                if layer.metrics is not None:
+                    info["metrics"] = layer.metrics
                 if "_capped_from" in layer.params:
                     info["capped_from"] = layer.params["_capped_from"]
                 if layer.layer_type in _LEGENDS:
@@ -817,6 +951,8 @@ class LayerManager:
                 }
                 if layer.sat_names is not None:
                     entry["sat_names"] = layer.sat_names
+                if layer.metrics is not None:
+                    entry["metrics"] = layer.metrics
                 # For analysis layers, record source constellation index
                 if layer.category == "Analysis" and layer.source_layer_id:
                     if layer.source_layer_id in layer_ids:
