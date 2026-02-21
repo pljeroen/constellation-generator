@@ -1093,6 +1093,7 @@ class TestViewerTableUX:
             input=js,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=10,
         )
         assert result.returncode == 0, (
