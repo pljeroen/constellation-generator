@@ -676,6 +676,7 @@ class LayerManager:
         self.duration = _DEFAULT_DURATION
         self.step = _DEFAULT_STEP
         self._lock = threading.RLock()
+        self.constraints: list[dict[str, Any]] = []
 
     def _next_id(self) -> str:
         self._counter += 1
@@ -931,6 +932,53 @@ class LayerManager:
                     self.layers[dep_id].sat_names = sat_names
                     self.layers[dep_id].czml = dep_czml
 
+    def add_constraint(self, constraint: dict[str, Any]) -> None:
+        """Add a metric constraint {metric, operator, threshold}."""
+        self.constraints.append(constraint)
+
+    def evaluate_constraints(
+        self, constellation_layer_id: str,
+    ) -> list[dict[str, Any]]:
+        """Evaluate all constraints against a constellation's analysis metrics.
+
+        Returns list of {metric, operator, threshold, actual, passed}.
+        """
+        _ops = {
+            ">=": lambda a, t: a >= t,
+            "<=": lambda a, t: a <= t,
+            ">": lambda a, t: a > t,
+            "<": lambda a, t: a < t,
+            "==": lambda a, t: abs(a - t) < 1e-9,
+        }
+        with self._lock:
+            # Collect all metrics from analysis layers sourced from this constellation
+            merged: dict[str, Any] = {}
+            for layer in self.layers.values():
+                if layer.source_layer_id == constellation_layer_id and layer.metrics:
+                    for k, v in layer.metrics.items():
+                        key = f"{layer.layer_type}_{k}"
+                        merged[key] = v
+
+            results = []
+            for c in self.constraints:
+                metric_key = c["metric"]
+                op = c["operator"]
+                threshold = c["threshold"]
+                actual = merged.get(metric_key)
+                if actual is not None and isinstance(actual, (int, float)):
+                    op_fn = _ops.get(op)
+                    passed = op_fn(actual, threshold) if op_fn else False
+                else:
+                    passed = False
+                results.append({
+                    "metric": metric_key,
+                    "operator": op,
+                    "threshold": threshold,
+                    "actual": actual,
+                    "passed": passed,
+                })
+            return results
+
     def compare_layers(
         self, layer_id_a: str, layer_id_b: str,
     ) -> dict[str, Any]:
@@ -1125,6 +1173,7 @@ class LayerManager:
                     "total": len(layers),
                     **categories,
                 },
+                "constraints": list(self.constraints),
             }
 
     def load_session(self, session_data: dict[str, Any]) -> int:
@@ -1149,6 +1198,7 @@ class LayerManager:
             # Clear existing layers atomically with restore
             self.layers.clear()
             self._counter = 0
+            self.constraints = list(session_data.get("constraints", []))
             if "duration_s" in session_data:
                 self.duration = timedelta(seconds=session_data["duration_s"])
             if "step_s" in session_data:
@@ -1511,6 +1561,37 @@ class ConstellationHandler(BaseHTTPRequestHandler):
                 self._json_response({"results": results})
             except (KeyError, ValueError, TypeError) as e:
                 self._error_response(400, f"Sweep error: {e}")
+            return
+
+        if base == "/api/constraints" and param == "add":
+            try:
+                body = self._read_body()
+            except (ValueError, json.JSONDecodeError) as e:
+                self._error_response(400, f"Bad request: {e}")
+                return
+            self.layer_manager.add_constraint(body)
+            self._json_response({"ok": True, "count": len(self.layer_manager.constraints)})
+            return
+
+        if base == "/api/constraints" and param == "evaluate":
+            try:
+                body = self._read_body()
+            except (ValueError, json.JSONDecodeError) as e:
+                self._error_response(400, f"Bad request: {e}")
+                return
+            try:
+                results = self.layer_manager.evaluate_constraints(body["layer_id"])
+                passed = sum(1 for r in results if r["passed"])
+                self._json_response({
+                    "results": results,
+                    "summary": f"{passed}/{len(results)} constraints met",
+                })
+            except KeyError as e:
+                self._error_response(404, f"Layer not found: {e}")
+            return
+
+        if base == "/api/constraints" and param == "list":
+            self._json_response({"constraints": self.layer_manager.constraints})
             return
 
         if base == "/api/compare":

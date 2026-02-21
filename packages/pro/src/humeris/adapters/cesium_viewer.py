@@ -682,6 +682,25 @@ def generate_interactive_html(
                 <button class="btn btn-sm" onclick="applySettings()">Apply</button>
             </div>
         </details>
+        <!-- Constraints (APP-07) -->
+        <details>
+            <summary>Constraints</summary>
+            <div class="panel-section">
+                <div class="form-row"><label>Metric</label><input type="text" id="cst-metric" placeholder="e.g. beta_angle_avg_beta_deg" style="font-size:9px"></div>
+                <div class="form-row"><label>Op</label>
+                    <select id="cst-op">
+                        <option value=">=">>=</option>
+                        <option value="<="><=</option>
+                        <option value=">">&gt;</option>
+                        <option value="<">&lt;</option>
+                    </select>
+                </div>
+                <div class="form-row"><label>Threshold</label><input type="number" id="cst-threshold" step="0.1"></div>
+                <button class="btn btn-sm" onclick="addConstraint()">Add</button>
+                <button class="btn btn-sm" onclick="evaluateConstraints()">Evaluate</button>
+                <div id="constraintResults" style="margin-top:4px;font-size:10px"></div>
+            </div>
+        </details>
         <!-- Compare (APP-06) -->
         <details>
             <summary>Compare</summary>
@@ -1304,6 +1323,37 @@ def generate_interactive_html(
             }});
             container.innerHTML = html;
         }}
+        // --- Constraints (APP-07) ---
+        function addConstraint() {{
+            var metric = document.getElementById("cst-metric").value.trim();
+            var op = document.getElementById("cst-op").value;
+            var threshold = parseFloat(document.getElementById("cst-threshold").value);
+            if (!metric || isNaN(threshold)) {{ showToast("Fill in metric and threshold", "error"); return; }}
+            apiPost("/api/constraints/add", {{metric: metric, operator: op, threshold: threshold}}).then(function(resp) {{
+                showToast("Constraint added (" + resp.count + " total)", "success");
+                document.getElementById("cst-metric").value = "";
+                document.getElementById("cst-threshold").value = "";
+            }}).catch(function(e) {{ showToast("Error: " + e.message, "error"); }});
+        }}
+
+        function evaluateConstraints() {{
+            apiGet("/api/state").then(function(state) {{
+                var constLayer = state.layers.find(function(l) {{ return l.category === "Constellation"; }});
+                if (!constLayer) {{ showToast("No constellation to evaluate", "error"); return; }}
+                return apiPost("/api/constraints/evaluate", {{layer_id: constLayer.layer_id}});
+            }}).then(function(resp) {{
+                if (!resp) return;
+                var html = '<div style="margin-bottom:4px;color:rgba(80,160,255,0.9)">' + resp.summary + '</div>';
+                resp.results.forEach(function(r) {{
+                    var icon = r.passed ? '<span style="color:#4f4">&#10003;</span>' : '<span style="color:#f44">&#10007;</span>';
+                    html += '<div>' + icon + ' ' + r.metric.replace(/_/g, " ") + ' ' + r.operator + ' ' + r.threshold;
+                    if (r.actual !== null) html += ' (actual: ' + (typeof r.actual === "number" ? r.actual.toFixed(2) : r.actual) + ')';
+                    html += '</div>';
+                }});
+                document.getElementById("constraintResults").innerHTML = html;
+            }}).catch(function(e) {{ showToast("Evaluate error: " + e.message, "error"); }});
+        }}
+
         // --- Compare (APP-06) ---
         function populateCompareSelects() {{
             apiGet("/api/state").then(function(state) {{

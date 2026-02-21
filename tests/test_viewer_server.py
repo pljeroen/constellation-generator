@@ -3206,3 +3206,99 @@ class TestConfigComparison:
         result = mgr.compare_layers(lid_a, lid_b)
         for key in result["delta"]:
             assert isinstance(result["delta"][key], (int, float))
+
+
+# ---------------------------------------------------------------------------
+# APP-07: Constraint definition and pass/fail reporting
+# ---------------------------------------------------------------------------
+
+
+class TestConstraints:
+    """Tests for constraint definition and pass/fail evaluation."""
+
+    def test_add_and_evaluate_constraint_pass(self):
+        """Constraint that is met evaluates to pass."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=2, n_sats=2)
+        lid = mgr.add_layer(
+            name="Constellation:Test", category="Constellation",
+            layer_type="walker", states=states,
+            params={"altitude_km": 550, "inclination_deg": 53, "num_planes": 2, "sats_per_plane": 2},
+        )
+        mgr.add_layer(
+            name="Analysis:Beta", category="Analysis",
+            layer_type="beta_angle", states=states, params={}, source_layer_id=lid,
+        )
+        mgr.add_constraint({
+            "metric": "beta_angle_avg_beta_deg",
+            "operator": "<=",
+            "threshold": 90.0,
+        })
+        results = mgr.evaluate_constraints(lid)
+        assert len(results) == 1
+        assert results[0]["passed"] is True
+
+    def test_add_and_evaluate_constraint_fail(self):
+        """Constraint that is not met evaluates to fail."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=2, n_sats=2)
+        lid = mgr.add_layer(
+            name="Constellation:Test", category="Constellation",
+            layer_type="walker", states=states,
+            params={"altitude_km": 550, "inclination_deg": 53, "num_planes": 2, "sats_per_plane": 2},
+        )
+        mgr.add_layer(
+            name="Analysis:Beta", category="Analysis",
+            layer_type="beta_angle", states=states, params={}, source_layer_id=lid,
+        )
+        # Impossible constraint
+        mgr.add_constraint({
+            "metric": "beta_angle_avg_beta_deg",
+            "operator": ">=",
+            "threshold": 9999.0,
+        })
+        results = mgr.evaluate_constraints(lid)
+        assert len(results) == 1
+        assert results[0]["passed"] is False
+
+    def test_constraints_summary(self):
+        """evaluate_constraints returns summary with pass count."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=2, n_sats=2)
+        lid = mgr.add_layer(
+            name="Constellation:Test", category="Constellation",
+            layer_type="walker", states=states,
+            params={"altitude_km": 550, "inclination_deg": 53, "num_planes": 2, "sats_per_plane": 2},
+        )
+        mgr.add_layer(
+            name="Analysis:Beta", category="Analysis",
+            layer_type="beta_angle", states=states, params={}, source_layer_id=lid,
+        )
+        mgr.add_constraint({"metric": "beta_angle_avg_beta_deg", "operator": "<=", "threshold": 90.0})
+        mgr.add_constraint({"metric": "beta_angle_avg_beta_deg", "operator": ">=", "threshold": 9999.0})
+        results = mgr.evaluate_constraints(lid)
+        passed = sum(1 for r in results if r["passed"])
+        assert passed == 1
+        assert len(results) == 2
+
+    def test_constraints_saved_in_session(self):
+        """Constraints are included in session save."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        mgr.add_constraint({"metric": "coverage_percent_covered", "operator": ">=", "threshold": 80.0})
+        session = mgr.save_session(name="Test")
+        assert "constraints" in session
+        assert len(session["constraints"]) == 1
+
+    def test_constraints_restored_from_session(self):
+        """Constraints restored on session load."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        mgr.add_constraint({"metric": "coverage_percent_covered", "operator": ">=", "threshold": 80.0})
+        session = mgr.save_session(name="Test")
+        mgr2 = LayerManager(epoch=EPOCH)
+        mgr2.load_session(session)
+        assert len(mgr2.constraints) == 1
