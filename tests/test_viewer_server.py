@@ -538,7 +538,7 @@ def _start_server(port):
     return server, mgr
 
 
-def _api_request(port, method, path, body=None):
+def _api_request(port, method, path, body=None, timeout=30):
     """Make HTTP request to server, return (status, parsed_json_or_text)."""
     url = f"http://localhost:{port}{path}"
     data = json.dumps(body).encode() if body is not None else None
@@ -546,7 +546,7 @@ def _api_request(port, method, path, body=None):
     if data is not None:
         req.add_header("Content-Type", "application/json")
     try:
-        resp = urllib.request.urlopen(req, timeout=10)
+        resp = urllib.request.urlopen(req, timeout=timeout)
         content = resp.read().decode()
         try:
             return resp.status, json.loads(content)
