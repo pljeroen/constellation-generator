@@ -487,7 +487,8 @@ def _run_import_oem(args) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate satellite constellations for simulation (synthetic or live)"
+        prog="humeris",
+        description="Generate satellite constellations for simulation (synthetic or live)",
     )
     subparsers = parser.add_subparsers(dest="command")
 

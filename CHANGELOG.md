@@ -2,6 +2,42 @@
 
 All notable changes to this project are documented here.
 
+## [1.28.1] - 2026-02-21
+
+### Viewer UX
+
+- **Interactive satellite table** — In-place parameter editing (APP-01), metrics
+  summary panel (APP-02), sortable satellite data table (APP-03), named scenarios
+  with metadata (APP-04), parameter sweep with canvas chart and CSV export (APP-05),
+  side-by-side constellation comparison (APP-06), constraint definition with pass/fail
+  evaluation (APP-07), report generation as self-contained HTML (APP-08).
+- **Satellite table click-to-select** — Clicking a table row flies to the satellite
+  and opens the Cesium InfoBox. Works for both animated (`satellite-N`) and snapshot
+  (`snapshot-N`) modes.
+- **Table toggle button** — Moved above timeline, hides when table is open, close
+  button added to table header.
+
+### CLI
+
+- **Sweep subcommand** — `humeris sweep` for batch parameter trade studies.
+- **CCSDS import** — `humeris --import-oem` and `--import-opm` for CCSDS ephemeris
+  and orbit parameter message ingestion.
+- **Thread satellite names** — Names propagated through CZML pipeline.
+- **Default animation speed** — Set to 1x real-time.
+
+### Fixes
+
+- **Viewer black page** — Fixed JavaScript syntax error from Python f-string escaping
+  (`\'` → `\\'`) that killed the entire `<script>` block.
+- **De Sitter force formula** — Corrected vector triple product from
+  `V_E × (R × v)` to `(R × V_E) × v` per IERS 2010 eq. 10.6.
+- **Windows encoding** — Added `encoding="utf-8"` to subprocess.run in test for
+  Node.js syntax check (cp1252 can't handle Unicode arrows).
+- **Hardening sweep** — DoS limits on sweep parameters, constraint validation bounds,
+  XSS sanitization, JSON safety, CCSDS parser robustness, CLI error handling.
+
+**Tests**: 3582 passing (+95 from 1.27.0)
+
 ## [1.27.0] - 2026-02-17
 
 ### Hardening and polish (post-release)

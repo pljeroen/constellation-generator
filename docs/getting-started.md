@@ -28,8 +28,8 @@ pip install humeris-pro
 Download `.whl` files from the [Releases](https://github.com/pljeroen/humeris/releases) page:
 
 ```bash
-pip install humeris_core-1.27.0-py3-none-any.whl
-pip install humeris_pro-1.27.0-py3-none-any.whl
+pip install humeris_core-1.28.1-py3-none-any.whl
+pip install humeris_pro-1.28.1-py3-none-any.whl
 ```
 
 ### Windows executable

@@ -130,6 +130,47 @@ class TestDeSitterForce:
         )
         assert len(result) == 3
 
+    def test_iers_vector_triple_product(self):
+        """IERS 2010 eq. 10.6: acceleration uses (R x V_E) x v, not V_E x (R x v).
+
+        The geodesic precession is Omega_geo x v where Omega = (3/2)*GM_S/(c^2*R^3)*(R x V_E).
+        Using BAC-CAB: (R x V_E) x v = (R.v)*V_E - (V_E.v)*R.
+        The wrong form V_E x (R x v) = (V_E.v)*R - (V_E.R)*v gives different results.
+        """
+        import numpy as np
+        from humeris.domain.relativistic_forces import (
+            DeSitterForce, _GM_SUN, _C_LIGHT, _sun_position_approx,
+        )
+
+        force = DeSitterForce()
+        # Use a date where Earth velocity has a known non-trivial direction
+        dt = datetime(2024, 3, 20, tzinfo=timezone.utc)  # equinox
+        # Non-degenerate position and velocity (all components non-zero)
+        pos = (5000000.0, 4000000.0, 3000000.0)
+        vel = (1000.0, 5000.0, 7000.0)
+        acc = force.acceleration(dt, pos, vel)
+
+        # Independently compute the correct IERS form:
+        # a = coeff * (R x V_E) x v  where coeff = -(3*GM_S)/(2*c^2*R^3)
+        sun = np.array(_sun_position_approx(dt))
+        R = float(np.linalg.norm(sun))
+        # Earth velocity via finite difference (same method as the implementation)
+        from datetime import timedelta
+        dt2 = dt + timedelta(seconds=3600.0)
+        sun2 = np.array(_sun_position_approx(dt2))
+        Ve = -(sun2 - sun) / 3600.0
+
+        # IERS correct form: (R x V_E) x v
+        v_arr = np.array(vel)
+        RxVe = np.cross(sun, Ve)
+        iers_cross = np.cross(RxVe, v_arr)
+
+        coeff = -3.0 * _GM_SUN / (2.0 * _C_LIGHT**2 * R**3)
+        expected = coeff * iers_cross
+
+        # The implementation must match the IERS form within numerical precision
+        np.testing.assert_allclose(acc, expected, rtol=1e-6)
+
 
 class TestCombinedRelativistic:
     """Combined relativistic effects."""

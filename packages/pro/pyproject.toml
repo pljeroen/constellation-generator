@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Physics",
 ]
-dependencies = ["humeris-core>=1.27.0", "numpy>=1.24"]
+dependencies = ["humeris-core>=1.28.0", "numpy>=1.24"]
 
 [project.optional-dependencies]
 dev = ["sgp4>=2.22", "pytest>=8.0"]

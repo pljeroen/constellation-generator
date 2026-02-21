@@ -1747,7 +1747,11 @@ class ConstellationHandler(BaseHTTPRequestHandler):
             except (ValueError, json.JSONDecodeError) as e:
                 self._error_response(400, f"Bad request: {e}")
                 return
-            self.layer_manager.add_constraint(body)
+            try:
+                self.layer_manager.add_constraint(body)
+            except (ValueError, KeyError, TypeError) as e:
+                self._error_response(400, f"Invalid constraint: {e}")
+                return
             self._json_response({"ok": True, "count": len(self.layer_manager.constraints)})
             return
 

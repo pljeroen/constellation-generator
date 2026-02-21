@@ -203,8 +203,8 @@ class DeSitterForce:
     IERS 2010, eq. 10.6. Accounts for the curvature of spacetime
     due to the Sun's gravitational field as Earth orbits through it.
 
-    Acceleration:
-        a_dS = -(3 GM_S / (2 c² R³)) * (V_E × (R_sun × v_sat))
+    Acceleration (IERS 2010, eq. 10.6):
+        a_dS = -(3 GM_S / (2 c² R³)) * (R_sun × V_E) × v_sat
 
     where R_sun is the Earth-to-Sun vector, V_E is Earth's heliocentric
     velocity (computed via finite differences of the Sun ephemeris),
@@ -237,11 +237,9 @@ class DeSitterForce:
 
         Ve = -(sun2 - sun) / dt_s
 
-        # R_sun × v_sat
-        Rxv = np.cross(sun, vel_arr)
-
-        # V_E × (R_sun × v_sat)
-        cross = np.cross(Ve, Rxv)
+        # (R_sun × V_E) × v_sat  — IERS 2010, eq. 10.6
+        RxVe = np.cross(sun, Ve)
+        cross = np.cross(RxVe, vel_arr)
 
         c2 = self.c * self.c
         R_cubed = R * R_sq
