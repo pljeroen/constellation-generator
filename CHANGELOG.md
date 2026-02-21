@@ -19,9 +19,12 @@ All notable changes to this project are documented here.
 
 ### CLI
 
-- **Sweep subcommand** — `humeris sweep` for batch parameter trade studies.
-- **CCSDS import** — `humeris --import-oem` and `--import-opm` for CCSDS ephemeris
-  and orbit parameter message ingestion.
+- **Subcommand restructure** — CLI now uses proper subcommands: `humeris serve`,
+  `humeris generate`, `humeris import opm|oem`, `humeris sweep`. Old flag syntax
+  (`--serve`, `--import-opm`, bare `-i/-o`) still works with deprecation warnings.
+- **Version flag** — `humeris --version` prints the installed package version.
+- **CCSDS import** — `humeris import opm FILE` and `humeris import oem FILE` for
+  CCSDS orbit parameter and ephemeris message ingestion.
 - **Thread satellite names** — Names propagated through CZML pipeline.
 - **Default animation speed** — Set to 1x real-time.
 
@@ -36,7 +39,14 @@ All notable changes to this project are documented here.
 - **Hardening sweep** — DoS limits on sweep parameters, constraint validation bounds,
   XSS sanitization, JSON safety, CCSDS parser robustness, CLI error handling.
 
-**Tests**: 3582 passing (+95 from 1.27.0)
+### Packaging
+
+- **CesiumJS** — Upgraded CDN from 1.124 to 1.138.
+- **`py.typed` markers** — Verified inclusion in both wheel builds for PEP 561.
+- **`humeris.version`** — Package version accessible via `importlib.metadata`.
+- **Ports** — Converted all port interfaces from ABC to `@runtime_checkable Protocol`.
+
+**Tests**: 3601 passing (+114 from 1.27.0)
 
 ## [1.27.0] - 2026-02-17
 

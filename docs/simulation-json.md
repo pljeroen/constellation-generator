@@ -99,7 +99,7 @@ CelesTrak satellites keep their catalog name (e.g. `ISS (ZARYA)`,
 **Command**:
 
 ```bash
-humeris -i template.json -o output.json --base-id 100
+humeris generate -i template.json -o output.json --base-id 100
 ```
 
 **Output** (`output.json`):

@@ -2232,10 +2232,10 @@ class TestCliLoadSession:
     """CLI --load-session flag loads a session file at startup."""
 
     def test_load_session_argument_accepted(self):
-        """CLI parser must accept --load-session argument."""
+        """CLI 'serve' subcommand must accept --load-session argument."""
         import subprocess
         result = subprocess.run(
-            [sys.executable, "-m", "humeris.cli", "--help"],
+            [sys.executable, "-m", "humeris.cli", "serve", "--help"],
             capture_output=True, text=True, timeout=10,
         )
         assert "--load-session" in result.stdout
@@ -2472,10 +2472,10 @@ class TestCliHeadlessMode:
     """CLI --headless mode exports CZML without starting server."""
 
     def test_headless_argument_accepted(self):
-        """CLI parser must accept --headless argument."""
+        """CLI 'serve' subcommand must accept --headless argument."""
         import subprocess
         result = subprocess.run(
-            [sys.executable, "-m", "humeris.cli", "--help"],
+            [sys.executable, "-m", "humeris.cli", "serve", "--help"],
             capture_output=True, text=True, timeout=10,
         )
         assert "--headless" in result.stdout

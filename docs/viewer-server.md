@@ -11,15 +11,8 @@ Cesium globe and generates CZML data on demand for 21 analysis layer types.
 ### Server mode (interactive)
 
 ```bash
-# Via CLI entry point
-humeris --serve
-
-# Custom port
-humeris --serve --port 9000
-
-# Or via script directly
-python scripts/view_constellation.py --serve
-python scripts/view_constellation.py --serve --port 9000
+humeris serve
+humeris serve --port 9000
 ```
 
 Pre-loads three Walker shells (500/450/400 km, 1584 sats each) and live

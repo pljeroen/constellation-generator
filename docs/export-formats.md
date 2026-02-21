@@ -7,7 +7,7 @@ Geodetic satellite positions as comma-separated values.
 ### CLI
 
 ```bash
-humeris -i sim.json -o out.json --export-csv satellites.csv
+humeris generate -i sim.json -o out.json --export-csv satellites.csv
 ```
 
 ### Programmatic
@@ -48,7 +48,7 @@ Standard GeoJSON FeatureCollection with Point geometries.
 ### CLI
 
 ```bash
-humeris -i sim.json -o out.json --export-geojson satellites.geojson
+humeris generate -i sim.json -o out.json --export-geojson satellites.geojson
 ```
 
 ### Programmatic
@@ -195,7 +195,7 @@ tools. Satellite entities include ECI position/velocity with Y/Z axis
 swap and specified precision.
 
 ```bash
-humeris -i template.json -o output.json
+humeris generate -i template.json -o output.json
 ```
 
 The format preserves all template entities and adds generated satellites

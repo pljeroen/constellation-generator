@@ -17,7 +17,7 @@ import html
 import json
 
 
-_CESIUM_VERSION = "1.124"
+_CESIUM_VERSION = "1.138"
 
 
 def generate_cesium_html(

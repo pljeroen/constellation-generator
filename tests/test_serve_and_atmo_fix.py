@@ -89,17 +89,17 @@ class TestCliServeFlag:
     """CLI must accept --serve without requiring --input."""
 
     def test_serve_help_text(self):
-        """--serve appears in help output."""
+        """'serve' subcommand appears in help output."""
         result = subprocess.run(
             [sys.executable, "-m", "humeris.cli", "--help"],
             capture_output=True, text=True, timeout=10,
         )
-        assert "--serve" in result.stdout
+        assert "serve" in result.stdout
 
     def test_port_help_text(self):
-        """--port appears in help output."""
+        """--port appears in 'serve' subcommand help."""
         result = subprocess.run(
-            [sys.executable, "-m", "humeris.cli", "--help"],
+            [sys.executable, "-m", "humeris.cli", "serve", "--help"],
             capture_output=True, text=True, timeout=10,
         )
         assert "--port" in result.stdout

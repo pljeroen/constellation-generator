@@ -23,9 +23,9 @@ Pre-generated constellation files — open directly in the target application:
 
 ```bash
 # Generate constellation and export to any format
-humeris -i sim_old.json -o sim.json --export-ubox my_constellation.ubox
-humeris -i sim_old.json -o sim.json --export-spaceengine my_constellation.sc
-humeris -i sim_old.json -o sim.json --export-kml my_constellation.kml
+humeris generate -i sim_old.json -o sim.json --export-ubox my_constellation.ubox
+humeris generate -i sim_old.json -o sim.json --export-spaceengine my_constellation.sc
+humeris generate -i sim_old.json -o sim.json --export-kml my_constellation.kml
 ```
 
 See [Simulator Integrations](../docs/simulator-integrations.md) for full setup instructions.

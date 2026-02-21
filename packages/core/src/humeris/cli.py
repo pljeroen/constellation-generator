@@ -1,34 +1,22 @@
 # Copyright (c) 2026 Jeroen Visser. All rights reserved.
 # Licensed under the MIT License — see LICENSE.
 """
-Command-line interface for constellation generation.
+Command-line interface for satellite constellation analysis.
 
 Usage:
-    # Synthetic Walker shells (no extra deps)
-    humeris -i sim_old.json -o sim.json
-
-    # Live data from CelesTrak (requires sgp4)
-    humeris -i sim_old.json -o sim.json --live-group GPS-OPS
-    humeris -i sim_old.json -o sim.json --live-name "ISS (ZARYA)"
-    humeris -i sim_old.json -o sim.json --live-catnr 25544
-
-    # Export to CSV, GeoJSON, or interactive HTML viewer
-    humeris -i sim.json -o out.json --export-csv sats.csv
-    humeris -i sim.json -o out.json --export-geojson sats.geojson
-    humeris -i sim.json -o out.json --export-html viewer.html
-
-    # Export to simulator formats
-    humeris -i sim.json -o out.json --export-celestia sats.ssc
-    humeris -i sim.json -o out.json --export-kml sats.kml
-    humeris -i sim.json -o out.json --export-tle sats.tle
-    humeris -i sim.json -o out.json --export-blender sats.py
-    humeris -i sim.json -o out.json --export-spaceengine sats.sc
-    humeris -i sim.json -o out.json --export-ksp sats.sfs
-    humeris -i sim.json -o out.json --export-ubox sats.ubox
+    humeris serve                                       # 3D viewer
+    humeris generate -i sim.json -o out.json            # synthetic shells
+    humeris generate -i sim.json -o out.json --live-group GPS-OPS
+    humeris generate -i sim.json -o out.json --export-csv sats.csv
+    humeris import opm satellite.opm                    # CCSDS OPM
+    humeris import oem satellite.oem                    # CCSDS OEM
+    humeris sweep --param alt:400:600:50 --metric coverage -o sweep.csv
+    humeris --version
 """
 import argparse
 import math
 import sys
+import warnings
 
 from humeris.domain.constellation import (
     ShellConfig,
@@ -303,7 +291,7 @@ def _run_serve(
         if "Address already in use" in str(e) or e.errno == 98:
             print(
                 f"Error: Port {port} is already in use.\n"
-                f"Try a different port: humeris --serve --port {port + 1}",
+                f"Try a different port: humeris serve --port {port + 1}",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -321,7 +309,7 @@ def _run_serve(
 
 
 def _run_sweep(args) -> None:
-    """Execute CLI parameter sweep (APP-09)."""
+    """Execute CLI parameter sweep."""
     import csv
     import json
     from datetime import datetime, timezone
@@ -443,14 +431,14 @@ def _run_sweep(args) -> None:
     print(f"Wrote {len(results)} results to {output_path}", file=sys.stderr)
 
 
-def _run_import_opm(args) -> None:
+def _run_import_opm(file_path: str) -> None:
     """Import CCSDS OPM file and display satellite info."""
     from humeris.domain.ccsds_parser import parse_opm
     from humeris.domain.ccsds_contracts import CcsdsValidationError
     try:
-        result = parse_opm(args.import_opm)
+        result = parse_opm(file_path)
     except FileNotFoundError:
-        print(f"Error: File not found: {args.import_opm}", file=sys.stderr)
+        print(f"Error: File not found: {file_path}", file=sys.stderr)
         sys.exit(1)
     except CcsdsValidationError as e:
         print(f"Error: Invalid OPM file: {e}", file=sys.stderr)
@@ -463,14 +451,14 @@ def _run_import_opm(args) -> None:
         print(f"  State {i}: alt={alt_km:.1f} km, inc={inc_deg:.1f} deg, epoch={state.reference_epoch}")
 
 
-def _run_import_oem(args) -> None:
+def _run_import_oem(file_path: str) -> None:
     """Import CCSDS OEM file and display satellite info."""
     from humeris.domain.ccsds_parser import parse_oem
     from humeris.domain.ccsds_contracts import CcsdsValidationError
     try:
-        result = parse_oem(args.import_oem)
+        result = parse_oem(file_path)
     except FileNotFoundError:
-        print(f"Error: File not found: {args.import_oem}", file=sys.stderr)
+        print(f"Error: File not found: {file_path}", file=sys.stderr)
         sys.exit(1)
     except CcsdsValidationError as e:
         print(f"Error: Invalid OEM file: {e}", file=sys.stderr)
@@ -485,186 +473,14 @@ def _run_import_oem(args) -> None:
         print(f"  Last epoch:  {last.reference_epoch}")
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        prog="humeris",
-        description="Generate satellite constellations for simulation (synthetic or live)",
-    )
-    subparsers = parser.add_subparsers(dest="command")
-
-    # Sweep subcommand
-    sweep_parser = subparsers.add_parser(
-        "sweep",
-        help="Run parameter sweep for trade studies (batch mode)",
-    )
-    sweep_parser.add_argument(
-        '--param', action='append', required=True,
-        help="Parameter sweep spec: name:min:max:step (repeatable)"
-    )
-    sweep_parser.add_argument(
-        '--metric', required=True,
-        help="Metric type to compute (coverage, eclipse, beta_angle, deorbit, station_keeping)"
-    )
-    sweep_parser.add_argument(
-        '--output', '-o', required=True,
-        help="Output file path (.csv or .json)"
-    )
-    sweep_parser.add_argument(
-        '--format', choices=['csv', 'json'], default='csv',
-        help="Output format (default: csv)"
-    )
-
-    # Main parser flags
-    parser.add_argument(
-        '--input', '-i',
-        help="Path to input simulation JSON (with Earth + Satellite template)"
-    )
-    parser.add_argument(
-        '--output', '-o',
-        help="Path to write output simulation JSON"
-    )
-    parser.add_argument(
-        '--serve', action='store_true', default=False,
-        help="Start interactive 3D viewer server (opens browser)"
-    )
-    parser.add_argument(
-        '--port', type=int, default=8765,
-        help="Port for viewer server (default: 8765, used with --serve)"
-    )
-    parser.add_argument(
-        '--load-session',
-        help="Load a saved session JSON file at startup (used with --serve)"
-    )
-    parser.add_argument(
-        '--headless', action='store_true', default=False,
-        help="Run without browser or server — load session, export, exit (used with --serve)"
-    )
-    parser.add_argument(
-        '--export-czml',
-        help="Export all layers as CZML files to directory (used with --headless)"
-    )
-    parser.add_argument(
-        '--base-id', type=int, default=100,
-        help="Starting entity ID (default: 100)"
-    )
-    parser.add_argument(
-        '--template-name', default='Satellite',
-        help="Name of satellite template entity (default: Satellite)"
-    )
-
-    # CCSDS import flags
-    import_group = parser.add_argument_group('CCSDS import')
-    import_group.add_argument(
-        '--import-opm',
-        help="Import CCSDS OPM file (.opm) and display orbital state"
-    )
-    import_group.add_argument(
-        '--import-oem',
-        help="Import CCSDS OEM file (.oem) and display ephemeris summary"
-    )
-
-    live_group = parser.add_argument_group('live data (CelesTrak)')
-    live_group.add_argument(
-        '--live-group',
-        help="CelesTrak group (e.g. STATIONS, GPS-OPS, STARLINK, ONEWEB, ACTIVE)"
-    )
-    live_group.add_argument('--live-name', help="Search by satellite name")
-    live_group.add_argument('--live-catnr', type=int, help="NORAD catalog number")
-    live_group.add_argument(
-        '--concurrent', action='store_true', default=False,
-        help="Use concurrent SGP4 propagation (faster for large groups)"
-    )
-
-    export_group = parser.add_argument_group('export')
-    export_group.add_argument(
-        '--export-csv',
-        help="Export satellite positions to CSV (geodetic coordinates)"
-    )
-    export_group.add_argument(
-        '--export-geojson',
-        help="Export satellite positions to GeoJSON (FeatureCollection)"
-    )
-    export_group.add_argument(
-        '--export-html',
-        help="Export interactive 3D viewer as self-contained HTML (CesiumJS)"
-    )
-    export_group.add_argument(
-        '--cesium-token', default="",
-        help="Cesium Ion access token for imagery (optional, viewer works without)"
-    )
-    export_group.add_argument(
-        '--export-celestia',
-        help="Export constellation to Celestia Solar System Catalog (.ssc)"
-    )
-    export_group.add_argument(
-        '--export-kml',
-        help="Export constellation to KML for Google Earth (.kml)"
-    )
-    export_group.add_argument(
-        '--export-tle',
-        help="Export constellation as Two-Line Elements for Stellarium (.tle)"
-    )
-    export_group.add_argument(
-        '--export-blender',
-        help="Export constellation as Blender Python script (.py)"
-    )
-    export_group.add_argument(
-        '--export-spaceengine',
-        help="Export constellation for SpaceEngine (.sc)"
-    )
-    export_group.add_argument(
-        '--export-ksp',
-        help="Export constellation for Kerbal Space Program (.sfs)"
-    )
-    export_group.add_argument(
-        '--export-ubox',
-        help="Export constellation for Universe Sandbox (.ubox)"
-    )
-    export_group.add_argument(
-        '--no-orbits', action='store_true', default=False,
-        help="Omit orbit path lines from KML and Blender exports"
-    )
-    export_group.add_argument(
-        '--kml-planes', action='store_true', default=False,
-        help="Organize KML by orbital plane folders"
-    )
-    export_group.add_argument(
-        '--kml-isl', action='store_true', default=False,
-        help="Include ISL topology lines in KML export"
-    )
-    export_group.add_argument(
-        '--blender-colors', action='store_true', default=False,
-        help="Color-code satellites by orbital plane in Blender export"
-    )
-
-    args = parser.parse_args()
-
-    # Subcommand dispatch
-    if args.command == "sweep":
-        _run_sweep(args)
-        return
-
-    # CCSDS import
-    if getattr(args, "import_opm", None):
-        _run_import_opm(args)
-        return
-    if getattr(args, "import_oem", None):
-        _run_import_oem(args)
-        return
-
-    if args.serve:
-        _run_serve(
-            port=args.port,
-            load_session_path=args.load_session,
-            headless=args.headless,
-            export_czml_path=args.export_czml,
-        )
-        return
-
+def _run_generate(args) -> None:
+    """Generate constellation and optionally export."""
     if not args.input:
-        parser.error("the following arguments are required: --input/-i")
+        print("Error: generate requires --input/-i", file=sys.stderr)
+        sys.exit(2)
     if not args.output:
-        parser.error("the following arguments are required: --output/-o")
+        print("Error: generate requires --output/-o", file=sys.stderr)
+        sys.exit(2)
 
     try:
         live_mode = args.live_group or args.live_name or args.live_catnr is not None
@@ -763,6 +579,285 @@ def main():
         sys.exit(1)
     except (ValueError, ConnectionError) as e:
         print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _rewrite_legacy_argv(argv: list[str]) -> tuple[list[str], list[str]]:
+    """Rewrite deprecated CLI flags to subcommand syntax.
+
+    Returns (new_argv, deprecation_warnings).
+    Existing tests and scripts using old flags continue to work
+    but see a deprecation notice on stderr.
+    """
+    if len(argv) < 2:
+        return argv, []
+
+    # Already using a known subcommand — no rewriting needed
+    if argv[1] in ('serve', 'generate', 'import', 'sweep'):
+        return argv, []
+
+    args = list(argv)
+    dep_warnings: list[str] = []
+
+    # --serve → serve
+    if '--serve' in args:
+        i = args.index('--serve')
+        args = args[:i] + args[i + 1:]
+        args.insert(1, 'serve')
+        dep_warnings.append(
+            "DeprecationWarning: '--serve' is deprecated. Use: humeris serve"
+        )
+        return args, dep_warnings
+
+    # --import-opm FILE → import opm FILE
+    if '--import-opm' in args:
+        i = args.index('--import-opm')
+        if i + 1 < len(args):
+            file_path = args[i + 1]
+            args = args[:i] + args[i + 2:]
+            args.insert(1, 'import')
+            args.insert(2, 'opm')
+            args.append(file_path)
+            dep_warnings.append(
+                "DeprecationWarning: '--import-opm' is deprecated. "
+                "Use: humeris import opm FILE"
+            )
+            return args, dep_warnings
+
+    # --import-oem FILE → import oem FILE
+    if '--import-oem' in args:
+        i = args.index('--import-oem')
+        if i + 1 < len(args):
+            file_path = args[i + 1]
+            args = args[:i] + args[i + 2:]
+            args.insert(1, 'import')
+            args.insert(2, 'oem')
+            args.append(file_path)
+            dep_warnings.append(
+                "DeprecationWarning: '--import-oem' is deprecated. "
+                "Use: humeris import oem FILE"
+            )
+            return args, dep_warnings
+
+    # -i / --input present without subcommand → generate
+    if '-i' in args or '--input' in args:
+        args.insert(1, 'generate')
+        dep_warnings.append(
+            "DeprecationWarning: Bare mode is deprecated. "
+            "Use: humeris generate -i FILE -o FILE"
+        )
+        return args, dep_warnings
+
+    return args, []
+
+
+def _add_generate_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add generate-specific arguments to a parser."""
+    parser.add_argument(
+        '--input', '-i', required=True,
+        help="Path to input simulation JSON (with Earth + Satellite template)"
+    )
+    parser.add_argument(
+        '--output', '-o', required=True,
+        help="Path to write output simulation JSON"
+    )
+    parser.add_argument(
+        '--base-id', type=int, default=100,
+        help="Starting entity ID (default: 100)"
+    )
+    parser.add_argument(
+        '--template-name', default='Satellite',
+        help="Name of satellite template entity (default: Satellite)"
+    )
+
+    live_group = parser.add_argument_group('live data (CelesTrak)')
+    live_group.add_argument(
+        '--live-group',
+        help="CelesTrak group (e.g. STATIONS, GPS-OPS, STARLINK, ONEWEB, ACTIVE)"
+    )
+    live_group.add_argument('--live-name', help="Search by satellite name")
+    live_group.add_argument('--live-catnr', type=int, help="NORAD catalog number")
+    live_group.add_argument(
+        '--concurrent', action='store_true', default=False,
+        help="Use concurrent SGP4 propagation (faster for large groups)"
+    )
+
+    export_group = parser.add_argument_group('export')
+    export_group.add_argument(
+        '--export-csv',
+        help="Export satellite positions to CSV (geodetic coordinates)"
+    )
+    export_group.add_argument(
+        '--export-geojson',
+        help="Export satellite positions to GeoJSON (FeatureCollection)"
+    )
+    export_group.add_argument(
+        '--export-html',
+        help="Export interactive 3D viewer as self-contained HTML (CesiumJS)"
+    )
+    export_group.add_argument(
+        '--cesium-token', default="",
+        help="Cesium Ion access token for imagery (optional, viewer works without)"
+    )
+    export_group.add_argument(
+        '--export-celestia',
+        help="Export constellation to Celestia Solar System Catalog (.ssc)"
+    )
+    export_group.add_argument(
+        '--export-kml',
+        help="Export constellation to KML for Google Earth (.kml)"
+    )
+    export_group.add_argument(
+        '--export-tle',
+        help="Export constellation as Two-Line Elements for Stellarium (.tle)"
+    )
+    export_group.add_argument(
+        '--export-blender',
+        help="Export constellation as Blender Python script (.py)"
+    )
+    export_group.add_argument(
+        '--export-spaceengine',
+        help="Export constellation for SpaceEngine (.sc)"
+    )
+    export_group.add_argument(
+        '--export-ksp',
+        help="Export constellation for Kerbal Space Program (.sfs)"
+    )
+    export_group.add_argument(
+        '--export-ubox',
+        help="Export constellation for Universe Sandbox (.ubox)"
+    )
+    export_group.add_argument(
+        '--no-orbits', action='store_true', default=False,
+        help="Omit orbit path lines from KML and Blender exports"
+    )
+    export_group.add_argument(
+        '--kml-planes', action='store_true', default=False,
+        help="Organize KML by orbital plane folders"
+    )
+    export_group.add_argument(
+        '--kml-isl', action='store_true', default=False,
+        help="Include ISL topology lines in KML export"
+    )
+    export_group.add_argument(
+        '--blender-colors', action='store_true', default=False,
+        help="Color-code satellites by orbital plane in Blender export"
+    )
+
+
+def _get_version() -> str:
+    """Get package version string."""
+    from humeris.version import __version__
+    return __version__
+
+
+def main():
+    # Rewrite legacy argv to subcommand syntax (backward compat)
+    rewritten_argv, dep_warnings = _rewrite_legacy_argv(sys.argv)
+    for w in dep_warnings:
+        print(w, file=sys.stderr)
+
+    parser = argparse.ArgumentParser(
+        prog="humeris",
+        description="Satellite constellation analysis — generation, propagation, visualization",
+    )
+    parser.add_argument(
+        '--version', action='version',
+        version=f"humeris-core {_get_version()}",
+    )
+
+    subparsers = parser.add_subparsers(dest="command")
+
+    # --- serve ---
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Start interactive 3D viewer server (opens browser)",
+    )
+    serve_parser.add_argument(
+        '--port', type=int, default=8765,
+        help="Port for viewer server (default: 8765)"
+    )
+    serve_parser.add_argument(
+        '--load-session',
+        help="Load a saved session JSON file at startup"
+    )
+    serve_parser.add_argument(
+        '--headless', action='store_true', default=False,
+        help="Run without browser or server — load session, export, exit"
+    )
+    serve_parser.add_argument(
+        '--export-czml',
+        help="Export all layers as CZML files to directory (used with --headless)"
+    )
+
+    # --- generate ---
+    generate_parser = subparsers.add_parser(
+        "generate",
+        help="Generate synthetic or live constellation and export",
+    )
+    _add_generate_arguments(generate_parser)
+
+    # --- import ---
+    import_parser = subparsers.add_parser(
+        "import",
+        help="Import CCSDS orbital data files",
+    )
+    import_subparsers = import_parser.add_subparsers(dest="import_format")
+    opm_parser = import_subparsers.add_parser(
+        "opm", help="Import CCSDS OPM file (.opm)"
+    )
+    opm_parser.add_argument("file", help="Path to OPM file")
+    oem_parser = import_subparsers.add_parser(
+        "oem", help="Import CCSDS OEM file (.oem)"
+    )
+    oem_parser.add_argument("file", help="Path to OEM file")
+
+    # --- sweep ---
+    sweep_parser = subparsers.add_parser(
+        "sweep",
+        help="Run parameter sweep for trade studies (batch mode)",
+    )
+    sweep_parser.add_argument(
+        '--param', action='append', required=True,
+        help="Parameter sweep spec: name:min:max:step (repeatable)"
+    )
+    sweep_parser.add_argument(
+        '--metric', required=True,
+        help="Metric type to compute (coverage, eclipse, beta_angle, deorbit, station_keeping)"
+    )
+    sweep_parser.add_argument(
+        '--output', '-o', required=True,
+        help="Output file path (.csv or .json)"
+    )
+    sweep_parser.add_argument(
+        '--format', choices=['csv', 'json'], default='csv',
+        help="Output format (default: csv)"
+    )
+
+    args = parser.parse_args(rewritten_argv[1:])
+
+    # Dispatch
+    if args.command == "serve":
+        _run_serve(
+            port=args.port,
+            load_session_path=args.load_session,
+            headless=args.headless,
+            export_czml_path=args.export_czml,
+        )
+    elif args.command == "generate":
+        _run_generate(args)
+    elif args.command == "import":
+        if args.import_format == "opm":
+            _run_import_opm(args.file)
+        elif args.import_format == "oem":
+            _run_import_oem(args.file)
+        else:
+            import_parser.print_help()
+            sys.exit(1)
+    elif args.command == "sweep":
+        _run_sweep(args)
+    else:
+        parser.print_help()
         sys.exit(1)
 
 

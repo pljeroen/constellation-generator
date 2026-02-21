@@ -1,6 +1,6 @@
 # Humeris
 
-[![Version](https://img.shields.io/badge/version-1.28.1-blue.svg)](packages/core/pyproject.toml) [![Python](https://img.shields.io/badge/python-3.11_%7C_3.12_%7C_3.13-blue.svg)](packages/core/pyproject.toml) [![Tests](https://img.shields.io/badge/tests-3582_passing-brightgreen.svg)](tests/) [![License](https://img.shields.io/badge/license-MIT_(core)-green.svg)](LICENSE) [![License](https://img.shields.io/badge/license-Commercial_(pro)-red.svg)](COMMERCIAL-LICENSE.md) [![Architecture](https://img.shields.io/badge/architecture-hexagonal-purple.svg)](docs/architecture.md)
+[![Version](https://img.shields.io/badge/version-1.28.1-blue.svg)](packages/core/pyproject.toml) [![Python](https://img.shields.io/badge/python-3.11_%7C_3.12_%7C_3.13-blue.svg)](packages/core/pyproject.toml) [![Tests](https://img.shields.io/badge/tests-3601_passing-brightgreen.svg)](tests/) [![License](https://img.shields.io/badge/license-MIT_(core)-green.svg)](LICENSE) [![License](https://img.shields.io/badge/license-Commercial_(pro)-red.svg)](COMMERCIAL-LICENSE.md) [![Architecture](https://img.shields.io/badge/architecture-hexagonal-purple.svg)](docs/architecture.md)
 
 A Python library for satellite constellation analysis — from generating
 Walker shells to propagating orbits, screening conjunctions, and
@@ -43,9 +43,11 @@ Windows executable and development setup.
 ## Quick look
 
 ```bash
-humeris --serve                                        # 3D viewer at localhost:8765
-humeris -i sim.json -o out.json --live-group GPS-OPS   # live GPS constellation
-humeris -i sim.json -o out.json --export-csv sats.csv  # export to CSV
+humeris serve                                                      # 3D viewer at localhost:8765
+humeris generate -i sim.json -o out.json --live-group GPS-OPS      # live GPS constellation
+humeris generate -i sim.json -o out.json --export-csv sats.csv     # export to CSV
+humeris import opm satellite.opm                                   # CCSDS orbit data
+humeris sweep --param alt:400:600:50 --metric coverage -o sweep.csv
 ```
 
 ```python
@@ -84,6 +86,7 @@ Details: [Validation](docs/validation.md)
 - [Python API Examples](docs/python-api.md) — worked examples for every module
 
 **Usage guides**
+- [Examples](examples/) — trade study script, pre-generated simulator files
 - [Simulation JSON](docs/simulation-json.md) — input/output schema
 - [Viewer Server](docs/viewer-server.md) — interactive 3D viewer, 21 analysis types
 - [Export Formats](docs/export-formats.md) — CSV, GeoJSON, CZML

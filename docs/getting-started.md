@@ -37,8 +37,8 @@ pip install humeris_pro-1.28.1-py3-none-any.whl
 Download `humeris-windows-x64.zip` from [Releases](https://github.com/pljeroen/humeris/releases), extract, and run:
 
 ```
-humeris.exe -i simulation.json -o output.json
-humeris.exe --serve
+humeris.exe generate -i simulation.json -o output.json
+humeris.exe serve
 ```
 
 No Python installation required.
@@ -81,11 +81,8 @@ iss = celestrak.fetch_satellites(name="ISS (ZARYA)")
 ### Launch the interactive viewer
 
 ```bash
-# Via CLI entry point
-humeris --serve
-
-# Or via script directly
-python scripts/view_constellation.py --serve
+humeris serve
+humeris serve --port 9000
 ```
 
 Opens a Cesium 3D globe at `http://localhost:8765` with pre-loaded Walker
@@ -100,30 +97,41 @@ pytest tests/test_live_data.py  # live CelesTrak (requires network)
 
 ## CLI reference
 
-### Synthetic constellations (Walker shells)
+### Subcommands
+
+```bash
+humeris serve                    # interactive 3D viewer
+humeris generate -i ... -o ...   # constellation generation + export
+humeris import opm FILE          # CCSDS OPM import
+humeris import oem FILE          # CCSDS OEM import
+humeris sweep --param ... -o ... # parameter sweep
+humeris --version                # show version
+```
+
+### Generate: synthetic constellations
 
 ```bash
 # Default: 3 Walker shells + SSO band
-humeris -i simulation_old.json -o simulation.json
+humeris generate -i simulation_old.json -o simulation.json
 
 # Custom base ID
-humeris -i sim_old.json -o sim.json --base-id 200
+humeris generate -i sim_old.json -o sim.json --base-id 200
 ```
 
-### Live data from CelesTrak
+### Generate: live data from CelesTrak
 
 ```bash
 # Real GPS constellation (32 satellites)
-humeris -i sim.json -o out.json --live-group GPS-OPS
+humeris generate -i sim.json -o out.json --live-group GPS-OPS
 
 # All Starlink satellites (~6000+) with concurrent SGP4 propagation
-humeris -i sim.json -o out.json --live-group STARLINK --concurrent
+humeris generate -i sim.json -o out.json --live-group STARLINK --concurrent
 
 # Search by name
-humeris -i sim.json -o out.json --live-name "ISS (ZARYA)"
+humeris generate -i sim.json -o out.json --live-name "ISS (ZARYA)"
 
 # By NORAD catalog number
-humeris -i sim.json -o out.json --live-catnr 25544
+humeris generate -i sim.json -o out.json --live-catnr 25544
 ```
 
 #### Available CelesTrak groups
@@ -132,20 +140,20 @@ humeris -i sim.json -o out.json --live-catnr 25544
 `GALILEO`, `BEIDOU`, `IRIDIUM-NEXT`, `PLANET`, `SPIRE`, `GEO`,
 `INTELSAT`, `SES`, `TELESAT`, `AMATEUR`, `SCIENCE`, `NOAA`, `GOES`
 
-### Export formats
+### Generate: export formats
 
 Export satellite positions as geodetic coordinates (lat/lon/alt) alongside
 the simulation JSON:
 
 ```bash
 # CSV export
-humeris -i sim.json -o out.json --export-csv satellites.csv
+humeris generate -i sim.json -o out.json --export-csv satellites.csv
 
 # GeoJSON export
-humeris -i sim.json -o out.json --export-geojson satellites.geojson
+humeris generate -i sim.json -o out.json --export-geojson satellites.geojson
 
 # Both at once
-humeris -i sim.json -o out.json --export-csv sats.csv --export-geojson sats.geojson
+humeris generate -i sim.json -o out.json --export-csv sats.csv --export-geojson sats.geojson
 ```
 
 CSV columns: `name`, `lat_deg`, `lon_deg`, `alt_km`, `epoch`, `plane_index`,
@@ -156,18 +164,18 @@ GeoJSON produces a FeatureCollection with Point geometries. Coordinates
 follow the GeoJSON spec: `[longitude, latitude, altitude_km]`. Properties
 include the same orbital analysis fields as CSV.
 
-### Simulator exports
+### Generate: simulator exports
 
 Export directly to 3D space simulators, game engines, and planetarium software:
 
 ```bash
-humeris -i sim.json -o out.json --export-celestia sats.ssc      # Celestia
-humeris -i sim.json -o out.json --export-kml sats.kml            # Google Earth
-humeris -i sim.json -o out.json --export-tle sats.tle            # Stellarium / STK / GMAT
-humeris -i sim.json -o out.json --export-blender sats.py         # Blender
-humeris -i sim.json -o out.json --export-spaceengine sats.sc     # SpaceEngine
-humeris -i sim.json -o out.json --export-ksp sats.sfs            # Kerbal Space Program
-humeris -i sim.json -o out.json --export-ubox sats.ubox          # Universe Sandbox
+humeris generate -i sim.json -o out.json --export-celestia sats.ssc      # Celestia
+humeris generate -i sim.json -o out.json --export-kml sats.kml            # Google Earth
+humeris generate -i sim.json -o out.json --export-tle sats.tle            # Stellarium / STK / GMAT
+humeris generate -i sim.json -o out.json --export-blender sats.py         # Blender
+humeris generate -i sim.json -o out.json --export-spaceengine sats.sc     # SpaceEngine
+humeris generate -i sim.json -o out.json --export-ksp sats.sfs            # Kerbal Space Program
+humeris generate -i sim.json -o out.json --export-ubox sats.ubox          # Universe Sandbox
 ```
 
 Optional visual layer flags:
@@ -195,6 +203,7 @@ per tool.
 
 ## Next steps
 
+- [Examples](../examples/) — trade study script, pre-generated simulator files
 - [Python API Examples](python-api.md) — worked examples for every module
 - [Simulation JSON](simulation-json.md) — input/output JSON schema
 - [Architecture](architecture.md) — hexagonal design, domain purity
