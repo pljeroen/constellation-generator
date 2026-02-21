@@ -2964,6 +2964,24 @@ class TestSatelliteTable:
         # First 2 sats in plane 0, next 2 in plane 1
         assert planes == [0, 0, 1, 1]
 
+    def test_table_rows_include_sat_idx(self):
+        """Each row must include _sat_idx for stable entity lookup after sorting."""
+        from humeris.adapters.viewer_server import LayerManager
+        mgr = LayerManager(epoch=EPOCH)
+        states = _make_states(n_planes=2, n_sats=3)
+        lid = mgr.add_layer(
+            name="Constellation:Walker",
+            category="Constellation",
+            layer_type="walker",
+            states=states,
+            params={"altitude_km": 550, "inclination_deg": 53, "num_planes": 2, "sats_per_plane": 3},
+            sat_names=[f"Sat-{i}" for i in range(6)],
+        )
+        table = mgr.get_satellite_table(lid)
+        for i, row in enumerate(table["rows"]):
+            assert "_sat_idx" in row, f"Row {i} missing _sat_idx field"
+            assert row["_sat_idx"] == i, f"Row {i} _sat_idx={row['_sat_idx']}, expected {i}"
+
 
 # ---------------------------------------------------------------------------
 # APP-04: Named scenarios with description

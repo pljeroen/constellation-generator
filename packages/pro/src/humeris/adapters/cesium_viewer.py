@@ -558,7 +558,7 @@ def generate_interactive_html(
         #satTable .sort-asc::after {{ content: " \\25B2"; font-size: 8px; }}
         #satTable .sort-desc::after {{ content: " \\25BC"; font-size: 8px; }}
         #satTableToggle {{
-            position: fixed; bottom: 8px; right: 8px; z-index: 101;
+            position: fixed; bottom: 36px; right: 8px; z-index: 101;
             background: rgba(30,40,60,0.9); color: #fff;
             border: 1px solid rgba(80,160,255,0.3); border-radius: 4px;
             padding: 4px 10px; cursor: pointer; font-size: 11px;
@@ -907,8 +907,11 @@ def generate_interactive_html(
 
         function toggleSatTable() {{
             var tbl = document.getElementById("satTable");
+            var btn = document.getElementById("satTableToggle");
             tbl.classList.toggle("visible");
-            if (tbl.classList.contains("visible") && !satTableData) {{
+            var isVisible = tbl.classList.contains("visible");
+            btn.style.display = isVisible ? "none" : "";
+            if (isVisible && !satTableData) {{
                 // Load table for first constellation layer
                 apiGet("/api/state").then(function(state) {{
                     var constLayer = state.layers.find(function(l) {{ return l.category === "Constellation"; }});
@@ -941,15 +944,19 @@ def generate_interactive_html(
                     return asc ? va - vb : vb - va;
                 }});
             }}
-            var html = '<table><thead><tr>';
+            var html = '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:rgba(30,35,50,0.98);border-bottom:1px solid rgba(255,255,255,0.15)">';
+            html += '<span style="font-weight:bold;font-size:11px;color:rgba(255,255,255,0.7)">Satellite Table (' + rows.length + ')</span>';
+            html += '<button onclick="toggleSatTable()" style="background:none;border:none;color:rgba(255,255,255,0.6);cursor:pointer;font-size:16px;padding:0 4px" title="Close table">&times;</button>';
+            html += '</div>';
+            html += '<table><thead><tr>';
             cols.forEach(function(c) {{
                 var cls = "";
                 if (satTableSort.col === c) cls = satTableSort.asc ? "sort-asc" : "sort-desc";
-                html += '<th class="' + cls + '" onclick="sortSatTable(\'' + escapeHtml(c) + '\')">' + escapeHtml(c.replace(/_/g, " ")) + '</th>';
+                html += '<th class="' + cls + '" onclick="sortSatTable(\\'' + escapeHtml(c) + '\\')">' + escapeHtml(c.replace(/_/g, " ")) + '</th>';
             }});
             html += '</tr></thead><tbody>';
-            rows.forEach(function(row, idx) {{
-                html += '<tr onclick="flyToSat(' + idx + ')">';
+            rows.forEach(function(row) {{
+                html += '<tr onclick="flyToSat(' + row._sat_idx + ')">';
                 cols.forEach(function(c) {{
                     html += '<td>' + escapeHtml(row[c]) + '</td>';
                 }});
@@ -971,14 +978,14 @@ def generate_interactive_html(
 
         function flyToSat(idx) {{
             if (!satTableLayerId) return;
-            var entityId = satTableLayerId + "-" + idx;
-            var ds = viewer.dataSources;
-            for (var i = 0; i < ds.length; i++) {{
-                var entity = ds.get(i).entities.getById(entityId);
-                if (entity) {{
-                    viewer.flyTo(entity, {{duration: 1.5}});
-                    return;
-                }}
+            var ds = layerSources[satTableLayerId];
+            if (!ds) return;
+            // CZML uses satellite-N (animated) or snapshot-N (snapshot mode)
+            var entity = ds.entities.getById("satellite-" + idx)
+                      || ds.entities.getById("snapshot-" + idx);
+            if (entity) {{
+                viewer.selectedEntity = entity;
+                viewer.flyTo(entity, {{duration: 1.5}});
             }}
         }}
 

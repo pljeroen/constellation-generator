@@ -1242,6 +1242,7 @@ th {{ background: #f0f4f8; font-weight: 600; }}
                 except Exception:
                     eclipse_pct = 0.0
                 rows.append({
+                    "_sat_idx": idx,
                     "name": name,
                     "plane": plane,
                     "altitude_km": round(alt_km, 2),

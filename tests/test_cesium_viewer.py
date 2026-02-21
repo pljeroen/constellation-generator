@@ -979,6 +979,128 @@ class TestInteractiveViewerBugFixes:
             "dataSources.remove should pass true for destroy"
 
 
+class TestViewerTableUX:
+    """VIEWER-TABLE-UX: table button position and satellite detail selection."""
+
+    def _html(self):
+        from humeris.adapters.cesium_viewer import generate_interactive_html
+        return generate_interactive_html()
+
+    # UXC1: Table toggle button must clear the Cesium timeline
+    def test_table_toggle_button_clears_timeline(self):
+        """#satTableToggle bottom >= 36px to avoid overlapping the timeline."""
+        html = self._html()
+        match = re.search(r'#satTableToggle\s*\{([^}]+)\}', html)
+        assert match is not None, "satTableToggle CSS rule not found"
+        css = match.group(1)
+        bottom_match = re.search(r'bottom:\s*(\d+)px', css)
+        assert bottom_match is not None, "bottom property not found in satTableToggle"
+        bottom_px = int(bottom_match.group(1))
+        assert bottom_px >= 36, (
+            f"satTableToggle bottom is {bottom_px}px, must be >= 36px "
+            "to clear the Cesium timeline widget"
+        )
+
+    # UXC2: flyToSat must set viewer.selectedEntity for InfoBox display
+    def test_fly_to_sat_sets_selected_entity(self):
+        """flyToSat must set viewer.selectedEntity so Cesium InfoBox shows details."""
+        html = self._html()
+        # Find the flyToSat function body
+        match = re.search(
+            r'function flyToSat\([^)]*\)\s*\{(.*?)\n\s{8}\}',
+            html, re.DOTALL,
+        )
+        assert match is not None, "flyToSat function not found"
+        body = match.group(1)
+        assert "viewer.selectedEntity" in body, (
+            "flyToSat must set viewer.selectedEntity to activate "
+            "Cesium's InfoBox with satellite details"
+        )
+
+    # UXC3: flyToSat must use CZML entity ID formats (satellite-N and snapshot-N)
+    def test_fly_to_sat_uses_czml_entity_ids(self):
+        """flyToSat must try both satellite-{idx} and snapshot-{idx} CZML ID formats."""
+        html = self._html()
+        match = re.search(
+            r'function flyToSat\([^)]*\)\s*\{(.*?)\n\s{8}\}',
+            html, re.DOTALL,
+        )
+        assert match is not None, "flyToSat function not found"
+        body = match.group(1)
+        assert '"satellite-"' in body, (
+            "flyToSat must try 'satellite-' prefix for animated mode CZML entities"
+        )
+        assert '"snapshot-"' in body, (
+            "flyToSat must try 'snapshot-' prefix for snapshot mode CZML entities"
+        )
+
+    # UXC4: Table rows pass original sat index, not sorted position
+    def test_table_rows_use_sat_idx_not_position(self):
+        """Table row onclick must use row._sat_idx, not the forEach index."""
+        html = self._html()
+        match = re.search(
+            r'function renderSatTable\(\)\s*\{(.*?)\n\s{8}\}',
+            html, re.DOTALL,
+        )
+        assert match is not None, "renderSatTable function not found"
+        body = match.group(1)
+        assert "_sat_idx" in body, (
+            "renderSatTable must use row._sat_idx for flyToSat, "
+            "not the forEach index which changes with sorting"
+        )
+
+    # UXC5: Table toggle button hides when table is visible
+    def test_table_toggle_hides_when_table_open(self):
+        """toggleSatTable must hide the button when table becomes visible."""
+        html = self._html()
+        match = re.search(
+            r'function toggleSatTable\(\)\s*\{(.*?)\n\s{8}\}',
+            html, re.DOTALL,
+        )
+        assert match is not None, "toggleSatTable function not found"
+        body = match.group(1)
+        assert "satTableToggle" in body, (
+            "toggleSatTable must reference the toggle button to hide/show it"
+        )
+        assert 'display' in body or 'none' in body or 'style' in body, (
+            "toggleSatTable must change button display when table state changes"
+        )
+
+    # UXC6: Table has a close button
+    def test_table_has_close_button(self):
+        """The satellite table must include a close button in its rendered HTML."""
+        html = self._html()
+        match = re.search(
+            r'function renderSatTable\(\)\s*\{(.*?)\n\s{8}\}',
+            html, re.DOTALL,
+        )
+        assert match is not None, "renderSatTable function not found"
+        body = match.group(1)
+        assert "toggleSatTable" in body or "closeSatTable" in body, (
+            "renderSatTable must include a close button that hides the table"
+        )
+
+    # UXC7: Generated JS must have no syntax errors
+    def test_generated_js_syntax_valid(self):
+        """Generated JavaScript must pass syntax validation."""
+        import subprocess
+        html = self._html()
+        match = re.search(r'<script>(.*?)</script>', html, re.DOTALL)
+        assert match is not None, "No script block found"
+        js = match.group(1)
+        result = subprocess.run(
+            ["node", "--check"],
+            input=js,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0, (
+            f"JavaScript syntax error in generated viewer HTML:\n"
+            f"{result.stderr.strip()}"
+        )
+
+
 class TestCesiumViewerPurity:
     """Adapter purity: only stdlib + internal imports allowed."""
 
