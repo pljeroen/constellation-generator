@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "humeris-pro"
-version = "1.28.2"
+version = "1.28.3"
 description = "Humeris professional modules — advanced astrodynamics analysis"
 requires-python = ">=3.11"
 license = {text = "Commercial — see COMMERCIAL-LICENSE.md"}
@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Physics",
 ]
-dependencies = ["humeris-core>=1.28.0", "numpy>=1.24"]
+dependencies = ["humeris-core>=1.28.3", "numpy>=1.24"]
 
 [project.optional-dependencies]
 dev = ["sgp4>=2.22", "pytest>=8.0"]
