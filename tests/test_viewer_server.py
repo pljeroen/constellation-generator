@@ -2541,9 +2541,9 @@ class TestViewerServerPurity:
             tree = ast.parse(f.read())
 
         allowed_stdlib = {
-            "json", "http", "threading", "datetime", "dataclasses",
+            "json", "http", "html", "threading", "datetime", "dataclasses",
             "urllib", "functools", "math", "numpy", "logging", "typing",
-            "socketserver", "os",
+            "socketserver", "os", "csv",
         }
         allowed_internal = {"humeris"}
 
@@ -3361,3 +3361,217 @@ class TestReportGeneration:
         mgr.add_constraint({"metric": "beta_angle_avg_beta_deg", "operator": "<=", "threshold": 90.0})
         html = mgr.generate_report(name="Constraint Report")
         assert "constraint" in html.lower() or "Constraint" in html
+
+
+class TestCLISweep:
+    """APP-09: CLI batch mode for trade studies."""
+
+    def test_cli_sweep_csv_output(self, tmp_path):
+        """humeris sweep outputs CSV with header and data rows."""
+        import subprocess
+        out_csv = tmp_path / "results.csv"
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "humeris.cli", "sweep",
+                "--param", "altitude_km:400:600:100",
+                "--metric", "coverage",
+                "--output", str(out_csv),
+            ],
+            capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        assert out_csv.exists()
+        lines = out_csv.read_text().strip().split("\n")
+        assert len(lines) >= 2  # header + at least 1 data row
+        assert "altitude_km" in lines[0]
+
+    def test_cli_sweep_json_output(self, tmp_path):
+        """humeris sweep --format json outputs valid JSON array."""
+        import subprocess
+        import json
+        out_json = tmp_path / "results.json"
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "humeris.cli", "sweep",
+                "--param", "altitude_km:400:600:100",
+                "--metric", "coverage",
+                "--output", str(out_json),
+                "--format", "json",
+            ],
+            capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        data = json.loads(out_json.read_text())
+        assert isinstance(data, list)
+        assert len(data) >= 2
+        assert "params" in data[0]
+        assert "metrics" in data[0]
+
+    def test_cli_sweep_multiple_params(self, tmp_path):
+        """Multiple --param flags sweep multiple dimensions."""
+        import subprocess
+        out_csv = tmp_path / "results.csv"
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "humeris.cli", "sweep",
+                "--param", "altitude_km:400:500:100",
+                "--param", "inclination_deg:30:60:30",
+                "--metric", "coverage",
+                "--output", str(out_csv),
+            ],
+            capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        lines = out_csv.read_text().strip().split("\n")
+        # 2 altitude values x 2 inclination values = 4 data rows + header
+        assert len(lines) >= 5
+
+    def test_cli_sweep_progress_on_stderr(self, tmp_path):
+        """Sweep shows progress information on stderr."""
+        import subprocess
+        out_csv = tmp_path / "results.csv"
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "humeris.cli", "sweep",
+                "--param", "altitude_km:400:500:100",
+                "--metric", "coverage",
+                "--output", str(out_csv),
+            ],
+            capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0
+        # Progress info goes to stderr
+        assert len(result.stderr) > 0
+
+
+class TestCcsdsImport:
+    """APP-10: CCSDS OEM/OPM import."""
+
+    def test_parse_opm_kvn(self, tmp_path):
+        """Parse CCSDS OPM KVN file into OrbitalState."""
+        from humeris.domain.ccsds_parser import parse_opm
+        opm_text = (
+            "CCSDS_OPM_VERS = 2.0\n"
+            "CREATION_DATE = 2026-01-01T00:00:00\n"
+            "ORIGINATOR = TEST\n"
+            "OBJECT_NAME = ISS\n"
+            "OBJECT_ID = 1998-067A\n"
+            "CENTER_NAME = EARTH\n"
+            "REF_FRAME = EME2000\n"
+            "TIME_SYSTEM = UTC\n"
+            "EPOCH = 2026-01-01T12:00:00.000\n"
+            "X = 6678.137\n"
+            "Y = 0.0\n"
+            "Z = 0.0\n"
+            "X_DOT = 0.0\n"
+            "Y_DOT = 7.725\n"
+            "Z_DOT = 0.0\n"
+        )
+        opm_file = tmp_path / "test.opm"
+        opm_file.write_text(opm_text)
+        result = parse_opm(str(opm_file))
+        assert result.object_name == "ISS"
+        assert result.object_id == "1998-067A"
+        assert len(result.states) == 1
+        state = result.states[0]
+        # Position in km -> converted to m internally; SMA from vis-viva
+        assert abs(state.semi_major_axis_m - 6678137.0) < 5000.0
+
+    def test_parse_oem_kvn(self, tmp_path):
+        """Parse CCSDS OEM KVN file into list of states."""
+        from humeris.domain.ccsds_parser import parse_oem
+        oem_text = (
+            "CCSDS_OEM_VERS = 2.0\n"
+            "CREATION_DATE = 2026-01-01T00:00:00\n"
+            "ORIGINATOR = TEST\n"
+            "META_START\n"
+            "OBJECT_NAME = ISS\n"
+            "OBJECT_ID = 1998-067A\n"
+            "CENTER_NAME = EARTH\n"
+            "REF_FRAME = EME2000\n"
+            "TIME_SYSTEM = UTC\n"
+            "START_TIME = 2026-01-01T12:00:00.000\n"
+            "STOP_TIME = 2026-01-01T13:00:00.000\n"
+            "META_STOP\n"
+            "2026-01-01T12:00:00.000  6678.137  0.0  0.0  0.0  7.725  0.0\n"
+            "2026-01-01T12:30:00.000  -1234.567  6500.0  1000.0  -6.5  -1.0  3.0\n"
+        )
+        oem_file = tmp_path / "test.oem"
+        oem_file.write_text(oem_text)
+        result = parse_oem(str(oem_file))
+        assert result.object_name == "ISS"
+        assert len(result.states) == 2
+
+    def test_parse_opm_malformed_rejects(self, tmp_path):
+        """Malformed OPM file raises CcsdsValidationError."""
+        from humeris.domain.ccsds_parser import parse_opm
+        from humeris.domain.ccsds_contracts import CcsdsValidationError
+        opm_file = tmp_path / "bad.opm"
+        opm_file.write_text("CCSDS_OPM_VERS = 2.0\nOBJECT_NAME = TEST\n")
+        with pytest.raises(CcsdsValidationError):
+            parse_opm(str(opm_file))
+
+    def test_parse_oem_multi_segment(self, tmp_path):
+        """Multi-segment OEM produces states from all segments."""
+        from humeris.domain.ccsds_parser import parse_oem
+        oem_text = (
+            "CCSDS_OEM_VERS = 2.0\n"
+            "CREATION_DATE = 2026-01-01T00:00:00\n"
+            "ORIGINATOR = TEST\n"
+            "META_START\n"
+            "OBJECT_NAME = SAT1\n"
+            "OBJECT_ID = 2026-001A\n"
+            "CENTER_NAME = EARTH\n"
+            "REF_FRAME = EME2000\n"
+            "TIME_SYSTEM = UTC\n"
+            "START_TIME = 2026-01-01T12:00:00.000\n"
+            "STOP_TIME = 2026-01-01T12:30:00.000\n"
+            "META_STOP\n"
+            "2026-01-01T12:00:00.000  6678.137  0.0  0.0  0.0  7.725  0.0\n"
+            "META_START\n"
+            "OBJECT_NAME = SAT1\n"
+            "OBJECT_ID = 2026-001A\n"
+            "CENTER_NAME = EARTH\n"
+            "REF_FRAME = EME2000\n"
+            "TIME_SYSTEM = UTC\n"
+            "START_TIME = 2026-01-01T13:00:00.000\n"
+            "STOP_TIME = 2026-01-01T13:30:00.000\n"
+            "META_STOP\n"
+            "2026-01-01T13:00:00.000  -1234.567  6500.0  1000.0  -6.5  -1.0  3.0\n"
+        )
+        oem_file = tmp_path / "multi.oem"
+        oem_file.write_text(oem_text)
+        result = parse_oem(str(oem_file))
+        assert len(result.states) == 2
+
+    def test_cli_import_opm(self, tmp_path):
+        """CLI --import-opm flag loads OPM and shows satellite info."""
+        import subprocess
+        opm_text = (
+            "CCSDS_OPM_VERS = 2.0\n"
+            "CREATION_DATE = 2026-01-01T00:00:00\n"
+            "ORIGINATOR = TEST\n"
+            "OBJECT_NAME = TESTSAT\n"
+            "OBJECT_ID = 2026-001A\n"
+            "CENTER_NAME = EARTH\n"
+            "REF_FRAME = EME2000\n"
+            "TIME_SYSTEM = UTC\n"
+            "EPOCH = 2026-01-01T12:00:00.000\n"
+            "X = 6678.137\n"
+            "Y = 0.0\n"
+            "Z = 0.0\n"
+            "X_DOT = 0.0\n"
+            "Y_DOT = 7.725\n"
+            "Z_DOT = 0.0\n"
+        )
+        opm_file = tmp_path / "test.opm"
+        opm_file.write_text(opm_text)
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "humeris.cli",
+                "--import-opm", str(opm_file),
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        assert "TESTSAT" in result.stdout

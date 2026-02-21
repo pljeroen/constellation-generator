@@ -27,6 +27,7 @@ Usage:
     humeris -i sim.json -o out.json --export-ubox sats.ubox
 """
 import argparse
+import math
 import sys
 
 from humeris.domain.constellation import (
@@ -46,6 +47,7 @@ from humeris.adapters.blender_exporter import BlenderExporter
 from humeris.adapters.spaceengine_exporter import SpaceEngineExporter
 from humeris.adapters.ksp_exporter import KspExporter
 from humeris.adapters.ubox_exporter import UboxExporter
+from humeris.domain.orbital_mechanics import OrbitalConstants
 from humeris.domain.propagation import derive_orbital_state
 
 
@@ -318,10 +320,184 @@ def _run_serve(
         server.shutdown()
 
 
+def _run_sweep(args) -> None:
+    """Execute CLI parameter sweep (APP-09)."""
+    import csv
+    import json
+    from datetime import datetime, timezone
+    from itertools import product as iterproduct
+
+    try:
+        from humeris.adapters.viewer_server import LayerManager
+    except ImportError:
+        print(
+            "Sweep requires humeris-pro.\n"
+            "Install with: pip install humeris-pro",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Parse --param flags: "name:min:max:step"
+    sweep_specs: list[tuple[str, float, float, float]] = []
+    for p in args.param:
+        parts = p.split(":")
+        if len(parts) != 4:
+            print(
+                f"Error: --param must be name:min:max:step, got: {p}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        name = parts[0]
+        try:
+            lo, hi, step = float(parts[1]), float(parts[2]), float(parts[3])
+        except ValueError:
+            print(f"Error: non-numeric values in --param: {p}", file=sys.stderr)
+            sys.exit(1)
+        if step <= 0:
+            print(f"Error: step must be > 0 in --param: {p}", file=sys.stderr)
+            sys.exit(1)
+        sweep_specs.append((name, lo, hi, step))
+
+    # Generate value ranges for each parameter
+    param_ranges: list[list[float]] = []
+    param_names: list[str] = []
+    for name, lo, hi, step in sweep_specs:
+        vals: list[float] = []
+        v = lo
+        while v <= hi + 1e-9:
+            vals.append(round(v, 6))
+            v += step
+        param_ranges.append(vals)
+        param_names.append(name)
+
+    # Base constellation params (defaults)
+    base_params: dict[str, float] = {
+        "altitude_km": 550,
+        "inclination_deg": 53,
+        "num_planes": 6,
+        "sats_per_plane": 10,
+        "phase_factor": 0,
+        "raan_offset_deg": 0,
+    }
+
+    epoch = datetime.now(tz=timezone.utc)
+    mgr = LayerManager(epoch=epoch)
+
+    # Cartesian product of all parameter ranges
+    combos = list(iterproduct(*param_ranges))
+    total = len(combos)
+
+    results: list[dict] = []
+    for idx, combo in enumerate(combos):
+        params = dict(base_params)
+        for name, val in zip(param_names, combo):
+            params[name] = val
+
+        print(
+            f"  [{idx + 1}/{total}] {', '.join(f'{n}={v}' for n, v in zip(param_names, combo))}",
+            file=sys.stderr,
+        )
+
+        sweep_result = mgr.run_sweep(
+            base_params=params,
+            sweep_param=param_names[0],  # sweep on first param at its value
+            sweep_min=combo[0],
+            sweep_max=combo[0],
+            sweep_step=1.0,  # single value
+            metric_type=args.metric,
+        )
+        if sweep_result:
+            results.append(sweep_result[0])
+
+    # Write output
+    fmt = getattr(args, "format", "csv")
+    output_path = args.output
+
+    if fmt == "json":
+        import json as _json
+        with open(output_path, "w", encoding="utf-8") as f:
+            _json.dump(results, f, indent=2, default=str)
+    else:
+        # CSV
+        if not results:
+            print("No results to write.", file=sys.stderr)
+            sys.exit(1)
+        # Collect all metric keys
+        metric_keys: list[str] = []
+        for r in results:
+            for k in r.get("metrics", {}):
+                if k not in metric_keys:
+                    metric_keys.append(k)
+        fieldnames = list(param_names) + metric_keys
+        with open(output_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for r in results:
+                row = {}
+                for pn in param_names:
+                    row[pn] = r.get("params", {}).get(pn, "")
+                for mk in metric_keys:
+                    row[mk] = r.get("metrics", {}).get(mk, "")
+                writer.writerow(row)
+
+    print(f"Wrote {len(results)} results to {output_path}", file=sys.stderr)
+
+
+def _run_import_opm(args) -> None:
+    """Import CCSDS OPM file and display satellite info."""
+    from humeris.domain.ccsds_parser import parse_opm
+    result = parse_opm(args.import_opm)
+    print(f"Object: {result.object_name} ({result.object_id})")
+    print(f"Frame: {result.ref_frame}, Center: {result.center_name}")
+    for i, state in enumerate(result.states):
+        alt_km = (state.semi_major_axis_m - OrbitalConstants.R_EARTH) / 1000.0
+        inc_deg = math.degrees(state.inclination_rad)
+        print(f"  State {i}: alt={alt_km:.1f} km, inc={inc_deg:.1f} deg, epoch={state.reference_epoch}")
+
+
+def _run_import_oem(args) -> None:
+    """Import CCSDS OEM file and display satellite info."""
+    from humeris.domain.ccsds_parser import parse_oem
+    result = parse_oem(args.import_oem)
+    print(f"Object: {result.object_name} ({result.object_id})")
+    print(f"Frame: {result.ref_frame}, Center: {result.center_name}")
+    print(f"Ephemeris points: {len(result.states)}")
+    if result.states:
+        first = result.states[0]
+        last = result.states[-1]
+        print(f"  First epoch: {first.reference_epoch}")
+        print(f"  Last epoch:  {last.reference_epoch}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generate satellite constellations for simulation (synthetic or live)"
     )
+    subparsers = parser.add_subparsers(dest="command")
+
+    # Sweep subcommand
+    sweep_parser = subparsers.add_parser(
+        "sweep",
+        help="Run parameter sweep for trade studies (batch mode)",
+    )
+    sweep_parser.add_argument(
+        '--param', action='append', required=True,
+        help="Parameter sweep spec: name:min:max:step (repeatable)"
+    )
+    sweep_parser.add_argument(
+        '--metric', required=True,
+        help="Metric type to compute (coverage, eclipse, beta_angle, deorbit, station_keeping)"
+    )
+    sweep_parser.add_argument(
+        '--output', '-o', required=True,
+        help="Output file path (.csv or .json)"
+    )
+    sweep_parser.add_argument(
+        '--format', choices=['csv', 'json'], default='csv',
+        help="Output format (default: csv)"
+    )
+
+    # Main parser flags
     parser.add_argument(
         '--input', '-i',
         help="Path to input simulation JSON (with Earth + Satellite template)"
@@ -357,6 +533,17 @@ def main():
     parser.add_argument(
         '--template-name', default='Satellite',
         help="Name of satellite template entity (default: Satellite)"
+    )
+
+    # CCSDS import flags
+    import_group = parser.add_argument_group('CCSDS import')
+    import_group.add_argument(
+        '--import-opm',
+        help="Import CCSDS OPM file (.opm) and display orbital state"
+    )
+    import_group.add_argument(
+        '--import-oem',
+        help="Import CCSDS OEM file (.oem) and display ephemeris summary"
     )
 
     live_group = parser.add_argument_group('live data (CelesTrak)')
@@ -434,6 +621,19 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Subcommand dispatch
+    if args.command == "sweep":
+        _run_sweep(args)
+        return
+
+    # CCSDS import
+    if getattr(args, "import_opm", None):
+        _run_import_opm(args)
+        return
+    if getattr(args, "import_oem", None):
+        _run_import_oem(args)
+        return
 
     if args.serve:
         _run_serve(
