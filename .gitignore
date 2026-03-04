@@ -1,5 +1,6 @@
 # Private / tooling
 .env
+.claude/
 CLAUDE.md
 .tddv6/
 CONTRACT_*.md
