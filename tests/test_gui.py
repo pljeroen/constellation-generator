@@ -308,6 +308,131 @@ class TestCelesTrakGroups:
         assert "STARLINK" in CELESTRAK_GROUPS
 
 
+class TestCustomShells:
+    """Custom constellation shell builder logic."""
+
+    def test_build_shell_configs_from_values(self):
+        from humeris.gui import build_shell_configs
+
+        shell_dicts = [
+            {
+                "altitude_km": 550.0,
+                "inclination_deg": 53.0,
+                "num_planes": 6,
+                "sats_per_plane": 22,
+                "phase_factor": 1,
+                "raan_offset_deg": 0.0,
+                "shell_name": "Shell 1",
+            },
+        ]
+        configs = build_shell_configs(shell_dicts)
+        assert len(configs) == 1
+        assert configs[0].altitude_km == 550.0
+        assert configs[0].num_planes == 6
+        assert configs[0].sats_per_plane == 22
+
+    def test_build_shell_configs_multiple_shells(self):
+        from humeris.gui import build_shell_configs
+
+        shell_dicts = [
+            {
+                "altitude_km": 550.0,
+                "inclination_deg": 53.0,
+                "num_planes": 6,
+                "sats_per_plane": 22,
+                "phase_factor": 1,
+                "raan_offset_deg": 0.0,
+                "shell_name": "Shell 1",
+            },
+            {
+                "altitude_km": 1100.0,
+                "inclination_deg": 70.0,
+                "num_planes": 4,
+                "sats_per_plane": 10,
+                "phase_factor": 0,
+                "raan_offset_deg": 0.0,
+                "shell_name": "Shell 2",
+            },
+        ]
+        configs = build_shell_configs(shell_dicts)
+        assert len(configs) == 2
+        assert configs[1].altitude_km == 1100.0
+
+    def test_generate_from_shell_configs(self):
+        from humeris.gui import build_shell_configs, generate_from_configs
+
+        shell_dicts = [
+            {
+                "altitude_km": 550.0,
+                "inclination_deg": 53.0,
+                "num_planes": 2,
+                "sats_per_plane": 3,
+                "phase_factor": 0,
+                "raan_offset_deg": 0.0,
+                "shell_name": "Test",
+            },
+        ]
+        configs = build_shell_configs(shell_dicts)
+        sats = generate_from_configs(configs)
+        assert len(sats) == 6  # 2 planes × 3 sats
+
+    def test_validate_shell_rejects_negative_altitude(self):
+        from humeris.gui import validate_shell_dict
+
+        result = validate_shell_dict({
+            "altitude_km": -100.0,
+            "inclination_deg": 53.0,
+            "num_planes": 6,
+            "sats_per_plane": 22,
+            "phase_factor": 1,
+            "raan_offset_deg": 0.0,
+            "shell_name": "Bad",
+        })
+        assert result is not None  # returns error string
+
+    def test_validate_shell_rejects_bad_inclination(self):
+        from humeris.gui import validate_shell_dict
+
+        result = validate_shell_dict({
+            "altitude_km": 550.0,
+            "inclination_deg": 200.0,
+            "num_planes": 6,
+            "sats_per_plane": 22,
+            "phase_factor": 1,
+            "raan_offset_deg": 0.0,
+            "shell_name": "Bad",
+        })
+        assert result is not None
+
+    def test_validate_shell_rejects_too_many_sats(self):
+        from humeris.gui import validate_shell_dict
+
+        result = validate_shell_dict({
+            "altitude_km": 550.0,
+            "inclination_deg": 53.0,
+            "num_planes": 100,
+            "sats_per_plane": 100,
+            "phase_factor": 1,
+            "raan_offset_deg": 0.0,
+            "shell_name": "Huge",
+        })
+        assert result is not None  # 10,000 per shell > cap
+
+    def test_validate_shell_accepts_valid(self):
+        from humeris.gui import validate_shell_dict
+
+        result = validate_shell_dict({
+            "altitude_km": 550.0,
+            "inclination_deg": 53.0,
+            "num_planes": 6,
+            "sats_per_plane": 22,
+            "phase_factor": 1,
+            "raan_offset_deg": 0.0,
+            "shell_name": "Good",
+        })
+        assert result is None  # None = no error
+
+
 class TestGuiSmoke:
     """GUI smoke test — build and destroy window."""
 

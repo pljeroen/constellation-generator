@@ -222,15 +222,68 @@ CELESTRAK_GROUPS: list[str] = [
 # Satellite loading
 # ---------------------------------------------------------------------------
 
-def load_default_satellites() -> list[Any]:
-    """Load the default constellation (Walker shells + SSO band)."""
-    from humeris.cli import get_default_shells
+MAX_SATS_PER_SHELL = 5000
+MAX_TOTAL_SATS = 50000
+
+
+def validate_shell_dict(d: dict[str, Any]) -> str | None:
+    """Validate a shell config dict. Returns error string or None if valid."""
+    alt = d.get("altitude_km", 0)
+    if not (0 < alt < 50000):
+        return f"Altitude must be between 0 and 50,000 km (got {alt})"
+
+    inc = d.get("inclination_deg", 0)
+    if not (0 <= inc <= 180):
+        return f"Inclination must be between 0 and 180 degrees (got {inc})"
+
+    planes = d.get("num_planes", 0)
+    if not (1 <= planes <= 100):
+        return f"Planes must be between 1 and 100 (got {planes})"
+
+    spp = d.get("sats_per_plane", 0)
+    if not (1 <= spp <= 100):
+        return f"Sats per plane must be between 1 and 100 (got {spp})"
+
+    total = planes * spp
+    if total > MAX_SATS_PER_SHELL:
+        return f"Too many satellites in one shell: {total:,} (max {MAX_SATS_PER_SHELL:,})"
+
+    return None
+
+
+def build_shell_configs(shell_dicts: list[dict[str, Any]]) -> list[Any]:
+    """Build ShellConfig objects from a list of parameter dicts."""
+    from humeris.domain.constellation import ShellConfig
+
+    configs = []
+    for d in shell_dicts:
+        configs.append(ShellConfig(
+            altitude_km=float(d["altitude_km"]),
+            inclination_deg=float(d["inclination_deg"]),
+            num_planes=int(d["num_planes"]),
+            sats_per_plane=int(d["sats_per_plane"]),
+            phase_factor=int(d["phase_factor"]),
+            raan_offset_deg=float(d["raan_offset_deg"]),
+            shell_name=str(d["shell_name"]),
+        ))
+    return configs
+
+
+def generate_from_configs(configs: list[Any]) -> list[Any]:
+    """Generate satellites from a list of ShellConfig objects."""
     from humeris.domain.constellation import generate_walker_shell
 
     satellites: list[Any] = []
-    for shell in get_default_shells():
-        satellites.extend(generate_walker_shell(shell))
+    for config in configs:
+        satellites.extend(generate_walker_shell(config))
     return satellites
+
+
+def load_default_satellites() -> list[Any]:
+    """Load the default constellation (Walker shells + SSO band)."""
+    from humeris.cli import get_default_shells
+
+    return generate_from_configs(get_default_shells())
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +333,7 @@ class HumerisGui:
         self._celestrak_group_var = tk.StringVar(value="STARLINK")
         self._status_var = tk.StringVar(value="Loading default constellation...")
         self._export_status_var = tk.StringVar(value="")
+        self._shell_rows: list[dict[str, tk.StringVar]] = []
 
         # Default output directory
         docs = Path.home() / "Documents"
@@ -358,6 +412,28 @@ class HumerisGui:
         )
         self._celestrak_combo.pack(side="left", padx=5)
         self._celestrak_combo.bind("<<ComboboxSelected>>", lambda _: self._on_source_change())
+
+        ttk.Radiobutton(
+            src_frame,
+            text="Custom constellation",
+            variable=self._source_var,
+            value="custom",
+            command=self._on_source_change,
+        ).pack(anchor="w", padx=5, pady=2)
+
+        # Custom shell editor (hidden until "custom" selected)
+        self._custom_frame = ttk.Frame(src_frame)
+        self._shell_list_frame = ttk.Frame(self._custom_frame)
+        self._shell_list_frame.pack(fill="x", padx=5, pady=2)
+
+        btn_row = ttk.Frame(self._custom_frame)
+        btn_row.pack(fill="x", padx=5, pady=5)
+        ttk.Button(btn_row, text="+ Add shell", command=self._add_shell_row).pack(side="left", padx=2)
+        ttk.Button(btn_row, text="- Remove last", command=self._remove_shell_row).pack(side="left", padx=2)
+        ttk.Button(btn_row, text="Generate", command=self._generate_custom).pack(side="left", padx=10)
+
+        # Start with one default shell row
+        self._add_shell_row()
 
         ttk.Label(src_frame, textvariable=self._status_var).pack(anchor="w", padx=5, pady=2)
 
@@ -461,11 +537,118 @@ class HumerisGui:
             self._filename_vars[key].set(os.path.basename(f))
             self._output_dir_var.set(os.path.dirname(f))
 
+    def _add_shell_row(self) -> None:
+        """Add a new shell configuration row."""
+        if len(self._shell_rows) >= 10:
+            return
+
+        idx = len(self._shell_rows) + 1
+        row_vars: dict[str, tk.StringVar] = {
+            "altitude_km": tk.StringVar(value="550"),
+            "inclination_deg": tk.StringVar(value="53"),
+            "num_planes": tk.StringVar(value="6"),
+            "sats_per_plane": tk.StringVar(value="22"),
+            "phase_factor": tk.StringVar(value="1"),
+            "raan_offset_deg": tk.StringVar(value="0.0"),
+            "shell_name": tk.StringVar(value=f"Shell {idx}"),
+        }
+
+        frame = ttk.LabelFrame(self._shell_list_frame, text=f"Shell {idx}")
+        frame.pack(fill="x", padx=2, pady=2)
+        row_vars["_frame"] = frame  # type: ignore[assignment]
+
+        # Row 1: altitude, inclination, name
+        r1 = ttk.Frame(frame)
+        r1.pack(fill="x", padx=5, pady=1)
+        ttk.Label(r1, text="Altitude (km):").pack(side="left")
+        ttk.Entry(r1, textvariable=row_vars["altitude_km"], width=8).pack(side="left", padx=2)
+        ttk.Label(r1, text="Inclination (°):").pack(side="left", padx=(10, 0))
+        ttk.Entry(r1, textvariable=row_vars["inclination_deg"], width=6).pack(side="left", padx=2)
+        ttk.Label(r1, text="Name:").pack(side="left", padx=(10, 0))
+        ttk.Entry(r1, textvariable=row_vars["shell_name"], width=15).pack(side="left", padx=2)
+
+        # Row 2: planes, sats/plane, phase factor, RAAN offset
+        r2 = ttk.Frame(frame)
+        r2.pack(fill="x", padx=5, pady=1)
+        ttk.Label(r2, text="Planes:").pack(side="left")
+        ttk.Entry(r2, textvariable=row_vars["num_planes"], width=5).pack(side="left", padx=2)
+        ttk.Label(r2, text="Sats/plane:").pack(side="left", padx=(10, 0))
+        ttk.Entry(r2, textvariable=row_vars["sats_per_plane"], width=5).pack(side="left", padx=2)
+        ttk.Label(r2, text="Phase factor:").pack(side="left", padx=(10, 0))
+        ttk.Entry(r2, textvariable=row_vars["phase_factor"], width=4).pack(side="left", padx=2)
+        ttk.Label(r2, text="RAAN offset (°):").pack(side="left", padx=(10, 0))
+        ttk.Entry(r2, textvariable=row_vars["raan_offset_deg"], width=6).pack(side="left", padx=2)
+
+        self._shell_rows.append(row_vars)
+
+    def _remove_shell_row(self) -> None:
+        """Remove the last shell configuration row."""
+        if len(self._shell_rows) <= 1:
+            return
+        row = self._shell_rows.pop()
+        row["_frame"].destroy()  # type: ignore[union-attr]
+
+    def _get_shell_dicts(self) -> list[dict[str, Any]]:
+        """Read current shell rows into dicts."""
+        result = []
+        for row in self._shell_rows:
+            try:
+                result.append({
+                    "altitude_km": float(row["altitude_km"].get()),
+                    "inclination_deg": float(row["inclination_deg"].get()),
+                    "num_planes": int(row["num_planes"].get()),
+                    "sats_per_plane": int(row["sats_per_plane"].get()),
+                    "phase_factor": int(row["phase_factor"].get()),
+                    "raan_offset_deg": float(row["raan_offset_deg"].get()),
+                    "shell_name": row["shell_name"].get(),
+                })
+            except ValueError as e:
+                self._status_var.set(f"Invalid number: {e}")
+                return []
+        return result
+
+    def _generate_custom(self) -> None:
+        """Generate satellites from custom shell specifications."""
+        shell_dicts = self._get_shell_dicts()
+        if not shell_dicts:
+            return
+
+        # Validate each shell
+        for i, d in enumerate(shell_dicts):
+            error = validate_shell_dict(d)
+            if error:
+                self._status_var.set(f"Shell {i + 1}: {error}")
+                return
+
+        # Check total count
+        total = sum(d["num_planes"] * d["sats_per_plane"] for d in shell_dicts)
+        if total > MAX_TOTAL_SATS:
+            self._status_var.set(f"Too many satellites total: {total:,} (max {MAX_TOTAL_SATS:,})")
+            return
+
+        self._status_var.set("Generating custom constellation...")
+
+        def _gen() -> None:
+            try:
+                configs = build_shell_configs(shell_dicts)
+                sats = generate_from_configs(configs)
+                self.root.after(0, lambda: self._on_satellites_loaded(sats))
+            except Exception as e:
+                self.root.after(0, lambda: self._status_var.set(f"Error: {e}"))
+
+        threading.Thread(target=_gen, daemon=True).start()
+
     def _on_source_change(self) -> None:
         """Handle source radio button change."""
-        if self._source_var.get() == "default":
-            self._load_defaults_async()
+        source = self._source_var.get()
+        if source == "custom":
+            self._custom_frame.pack(fill="x", padx=5, pady=2)
         else:
+            self._custom_frame.pack_forget()
+
+        if source == "default":
+            self._load_defaults_async()
+        elif source == "celestrak":
             self._fetch_celestrak_async()
 
     def _load_defaults_async(self) -> None:
